@@ -1,0 +1,9 @@
+services:
+  backend:
+    build: .
+    container_name: ssas_seeder_backend
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    restart: unless-stopped

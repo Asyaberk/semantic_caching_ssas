@@ -1,0 +1,22 @@
+# Python virtual environment — never copy into the image
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment file — injected at runtime via docker-compose env_file
+.env
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
