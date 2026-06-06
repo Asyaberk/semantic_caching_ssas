@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     target_question_count: int = 200
     question_language: str = "tr"
 
+    # ── SSAS (real connection, only used when USE_MOCK_CUBE=false) ──
+    ssas_url: str = ""
+    ssas_api_key: str = ""
+
     # ── Development ─────────────────────────────────────────
     use_mock_cube: bool = True
 
