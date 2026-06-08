@@ -152,14 +152,21 @@ class QuestionGeneratorAgent:
 
     def _call_llm(self, user_prompt: str):
         """Send the prompt to the configured OpenAI model and return the raw response."""
-        return self.client.chat.completions.create(
-            model=settings.openai_model,
-            messages=[
+        params: dict = {
+            "model": settings.openai_model,
+            "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user",   "content": user_prompt},
             ],
-            response_format={"type": "json_object"},
-        )
+            "response_format": {"type": "json_object"},
+        }
+
+        # reasoning_effort is supported by gpt-5-nano and other reasoning models.
+        # Skip the parameter entirely for models that do not support it.
+        if settings.openai_thinking_effort:
+            params["reasoning_effort"] = settings.openai_thinking_effort
+
+        return self.client.chat.completions.create(**params)
 
     def _parse_response(self, raw: str) -> list[str]:
         """

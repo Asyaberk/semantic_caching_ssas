@@ -3,7 +3,7 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 
 # LLM
-openai==1.54.0
+openai>=2.0.0
 
 # Vector Database
 qdrant-client==1.11.3
@@ -11,9 +11,6 @@ qdrant-client==1.11.3
 # LLM Monitoring
 langfuse==2.53.2
 
-# Agent Framework
-langchain==0.3.7
-langchain-openai==0.2.8
 
 # Config & Utils
 python-dotenv==1.0.1
