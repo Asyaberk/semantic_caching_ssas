@@ -1,21 +1,22 @@
 """
-End-to-end test: Question Agent → MDX Agent pipeline.
+End-to-end pipeline test:
+  Question Agent → MDX Agent → Qdrant Uploader
 
-Generates a small number of questions for the Sales cube, then produces
-an MDX query for each one and prints the results.
+Generates questions for the Sales cube, produces MDX for each,
+then uploads everything to Qdrant.
 """
-import json
 import logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s — %(message)s")
 
 import sys
 sys.path.insert(0, "/app")
 
-from backend.agents.question_agent import QuestionGeneratorAgent
-from backend.agents.mdx_agent import MDXGeneratorAgent
+from backend.agents.question_agent  import QuestionGeneratorAgent
+from backend.agents.mdx_agent       import MDXGeneratorAgent
+from backend.agents.uploader_agent  import QdrantUploaderAgent
 
-CUBE_NAME  = "Sales"
-NUM_QUESTIONS = 3   # Keep small for a quick test
+CUBE_NAME     = "Sales"
+NUM_QUESTIONS = 3   # keep small for a quick smoke test
 
 # ── Step 1: Generate questions ─────────────────────────────────────────────
 print("\n" + "=" * 60)
@@ -37,11 +38,16 @@ mdx_agent = MDXGeneratorAgent()
 pairs     = mdx_agent.generate_batch(questions=questions, cube_name=CUBE_NAME)
 
 for pair in pairs:
-    print(f"\nQuestion   : {pair.question}")
-    print(f"Complexity : {pair.complexity}")
-    print(f"Dimensions : {pair.dimensions_used}")
-    print(f"Measures   : {pair.measures_used}")
-    print(f"MDX        :\n{pair.mdx}")
-    print("-" * 60)
+    print(f"\n  Question   : {pair.question}")
+    print(f"  Complexity : {pair.complexity}")
+    print(f"  MDX preview: {pair.mdx[:80].strip()}...")
 
-print(f"\nDone. {len(pairs)} QA pairs generated successfully.")
+# ── Step 3: Upload to Qdrant ───────────────────────────────────────────────
+print("\n" + "=" * 60)
+print("STEP 3 — Uploading to Qdrant")
+print("=" * 60)
+
+uploader = QdrantUploaderAgent()
+count    = uploader.upload(pairs)
+
+print(f"\nDone. {count} / {len(pairs)} QA pairs uploaded to Qdrant.")

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     # ── Qdrant ──────────────────────────────────────────────
     qdrant_url: str = ""
+    qdrant_port: int = 443
     qdrant_api_key: str = ""
     qdrant_collection_name: str = "ssas_qa_cache"
 
