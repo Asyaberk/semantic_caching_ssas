@@ -1,53 +1,60 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
 from enum import Enum
 
 
 class ComplexityLevel(str, Enum):
-    simple = "simple"
-    medium = "medium"
+    simple  = "simple"
+    medium  = "medium"
     complex = "complex"
 
 
 class PipelineStatus(str, Enum):
-    idle = "idle"
-    running = "running"
-    stopped = "stopped"
+    idle      = "idle"
+    running   = "running"
+    stopped   = "stopped"
     completed = "completed"
-    error = "error"
+    error     = "error"
 
 
 class QAPair(BaseModel):
     """
     A question + MDX query pair.
-    This is the unit of data uploaded to Qdrant.
+    This is the unit of data that gets embedded and uploaded to Qdrant.
     """
-    id: Optional[str] = None
-    question: str
-    mdx: str
-    cube_name: str = "Sales"
-    dimensions_used: list[str] = []
-    measures_used: list[str] = []
-    complexity: ComplexityLevel = ComplexityLevel.medium
-    language: str = "tr"
-    generated_at: datetime = datetime.utcnow()
-    langfuse_trace_id: Optional[str] = None
-    # Tracks Qdrant upload result: "uploaded" | "failed" | "pending"
-    upload_status: Optional[str] = None
+    id:               Optional[str]   = None
+    question:         str
+    mdx:              str
+    cube_name:        str             = "Sales"
+    dimensions_used:  list[str]       = []
+    measures_used:    list[str]       = []
+    complexity:       ComplexityLevel = ComplexityLevel.medium
+    language:         str             = "en"
+    langfuse_trace_id: Optional[str]  = None
+    # "pending" → "uploaded" | "failed" after upload attempt
+    upload_status:    Optional[str]   = "pending"
 
 
 class PipelineState(BaseModel):
     """
-    Represents the current state of the generation pipeline.
-    The UI polls this to display live progress.
+    Live state of the seeding pipeline.
+    Updated in real-time by the Orchestrator; served to the UI via FastAPI.
     """
-    status: PipelineStatus = PipelineStatus.idle
-    questions_generated: int = 0
-    mdx_generated: int = 0
-    uploaded_to_qdrant: int = 0
-    errors: int = 0
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    current_task: Optional[str] = None
-    logs: list[str] = []
+    status:               PipelineStatus = PipelineStatus.idle
+    current_cube:         Optional[str]  = None
+    total_cubes:          int            = 0
+
+    # Cumulative counters
+    questions_generated:  int            = 0
+    mdx_generated:        int            = 0
+    uploaded_count:       int            = 0
+
+    # Target (read from config, filled in by orchestrator)
+    target_count:         int            = 0
+
+    # Error tracking
+    last_error:           Optional[str]  = None
+
+    # Timestamps (ISO-8601 strings for easy JSON serialisation)
+    started_at:           Optional[str]  = None
+    last_updated:         Optional[str]  = None

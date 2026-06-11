@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+from backend.orchestrator import Orchestrator
 
 app = FastAPI(
     title="SSAS Semantic Cache Seeder",
@@ -7,7 +9,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Allow requests from the frontend dev server (e.g. localhost:5173)
+# Allow requests from the frontend dev server (e.g. localhost:3001)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,8 +18,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# One orchestrator instance shared across all requests
+_orchestrator = Orchestrator()
+
+
+# ── Health ────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health_check():
     """Simple liveness check. The UI calls this to confirm the server is up."""
     return {"status": "ok", "message": "SSAS Cache Seeder is running."}
+
+
+# ── Pipeline control ──────────────────────────────────────────────────────
+
+@app.post("/pipeline/start")
+async def start_pipeline():
+    """
+    Start the seeding pipeline in the background.
+    Returns immediately; poll /pipeline/status for progress.
+    """
+    try:
+        _orchestrator.start()
+        return {"message": "Pipeline started."}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.post("/pipeline/stop")
+async def stop_pipeline():
+    """
+    Request a clean stop. The current batch will finish before halting.
+    """
+    _orchestrator.stop()
+    return {"message": "Stop requested. Pipeline will halt after the current batch."}
+
+
+@app.get("/pipeline/status")
+async def pipeline_status():
+    """
+    Return the current pipeline state.
+    The UI polls this endpoint to display live progress.
+    """
+    state = _orchestrator.get_state()
+    return state.model_dump()
