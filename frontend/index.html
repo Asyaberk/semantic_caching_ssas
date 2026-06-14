@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SSAS Cache Seeder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0a0d14;
+      --surface:     #111520;
+      --surface2:    #181d2e;
+      --border:      rgba(255,255,255,0.07);
+      --accent:      #4f8ef7;
+      --accent-glow: rgba(79,142,247,0.25);
+      --green:       #22c55e;
+      --yellow:      #f59e0b;
+      --red:         #ef4444;
+      --text:        #e2e8f0;
+      --muted:       #64748b;
+      --radius:      14px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 60px;
+    }
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #e2e8f0 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    header p {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    /* ── Main grid ────────────────────────────────────────────────────── */
+    .grid {
+      width: 100%;
+      max-width: 900px;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .card:hover { border-color: rgba(79,142,247,0.25); }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(79,142,247,0.04) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .card.full  { grid-column: 1 / -1; }
+    .card.wide  { grid-column: 1 / -1; }
+
+    .card-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── Status badge ─────────────────────────────────────────────────── */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background 0.4s;
+    }
+    .dot.idle      { background: var(--muted); }
+    .dot.running   { background: var(--green); animation: pulse 1.4s infinite; }
+    .dot.stopped   { background: var(--yellow); }
+    .dot.completed { background: var(--green); }
+    .dot.error     { background: var(--red); }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+      50%       { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+    }
+
+    #status-text {
+      font-size: 1.4rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      letter-spacing: -0.3px;
+    }
+
+    #current-cube {
+      margin-top: 6px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 20px;
+    }
+
+    /* ── Counter cards ────────────────────────────────────────────────── */
+    .counter-value {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -1px;
+      color: var(--text);
+      line-height: 1;
+      margin-bottom: 6px;
+      font-variant-numeric: tabular-nums;
+      transition: color 0.3s;
+    }
+
+    .counter-value.highlight { color: var(--accent); }
+
+    .counter-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    /* ── Progress bar ─────────────────────────────────────────────────── */
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .progress-pct {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .progress-track {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent) 0%, #7eb3ff 100%);
+      transition: width 0.6s ease;
+      width: 0%;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0);
+      transition: background 0.2s;
+    }
+
+    .btn:hover::after { background: rgba(255,255,255,0.06); }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    #btn-start {
+      background: linear-gradient(135deg, var(--accent) 0%, #3b6fd4 100%);
+      color: #fff;
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    #btn-stop {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    /* ── Log panel ────────────────────────────────────────────────────── */
+    #log-box {
+      background: #080b12;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.78rem;
+      line-height: 1.7;
+    }
+
+    #log-box::-webkit-scrollbar { width: 4px; }
+    #log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    .log-line { color: var(--muted); }
+    .log-line.info  { color: #93c5fd; }
+    .log-line.ok    { color: var(--green); }
+    .log-line.warn  { color: var(--yellow); }
+    .log-line.error { color: var(--red); }
+
+    /* ── Last error ───────────────────────────────────────────────────── */
+    #error-box {
+      display: none;
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: #fca5a5;
+    }
+
+    /* ── Footer ───────────────────────────────────────────────────────── */
+    footer {
+      margin-top: 40px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>⚡ SSAS Cache Seeder</h1>
+    <p>Generates question / MDX pairs and uploads them to Qdrant for semantic caching.</p>
+  </header>
+
+  <div class="grid">
+
+    <!-- Status card -->
+    <div class="card full">
+      <div class="card-label">Pipeline Status</div>
+      <div class="status-row">
+        <div class="dot idle" id="status-dot"></div>
+        <span id="status-text">Idle</span>
+      </div>
+      <div id="current-cube"></div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="card wide">
+      <div class="card-label">Upload Progress</div>
+      <div class="progress-header">
+        <span id="progress-label">0 / 0 records</span>
+        <span class="progress-pct" id="progress-pct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Counter: questions -->
+    <div class="card">
+      <div class="card-label">Questions Generated</div>
+      <div class="counter-value" id="cnt-questions">0</div>
+      <div class="counter-sub">natural language questions</div>
+    </div>
+
+    <!-- Counter: MDX -->
+    <div class="card">
+      <div class="card-label">MDX Queries</div>
+      <div class="counter-value" id="cnt-mdx">0</div>
+      <div class="counter-sub">MDX queries generated</div>
+    </div>
+
+    <!-- Counter: uploaded -->
+    <div class="card">
+      <div class="card-label">Uploaded to Qdrant</div>
+      <div class="counter-value highlight" id="cnt-uploaded">0</div>
+      <div class="counter-sub">records in vector DB</div>
+    </div>
+
+    <!-- Counter: target -->
+    <div class="card">
+      <div class="card-label">Target</div>
+      <div class="counter-value" id="cnt-target">200</div>
+      <div class="counter-sub">records per cube</div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card wide">
+      <div class="card-label">Controls</div>
+      <div class="btn-row">
+        <button class="btn" id="btn-start" onclick="startPipeline()">▶ Start Pipeline</button>
+        <button class="btn" id="btn-stop"  onclick="stopPipeline()" disabled>⏹ Stop</button>
+      </div>
+      <div id="error-box"></div>
+    </div>
+
+    <!-- Live log -->
+    <div class="card wide">
+      <div class="card-label">Activity Log</div>
+      <div id="log-box"></div>
+    </div>
+
+  </div>
+
+  <footer>
+    Polling every 2s &nbsp;·&nbsp; Backend: <a href="/docs" style="color:var(--accent)">localhost:8002/docs</a>
+  </footer>
+
+  <script>
+    const API = '';   // same origin
+    let pollTimer = null;
+    let lastState = {};
+
+    /* ── Helpers ─────────────────────────────────────────────────────── */
+    function ts() {
+      return new Date().toLocaleTimeString('en-GB', { hour12: false });
+    }
+
+    function log(msg, type = 'info') {
+      const box  = document.getElementById('log-box');
+      const line = document.createElement('div');
+      line.className = `log-line ${type}`;
+      line.textContent = `[${ts()}]  ${msg}`;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+      // Keep max 200 lines
+      while (box.children.length > 200) box.removeChild(box.firstChild);
+    }
+
+    /* ── Status rendering ────────────────────────────────────────────── */
+    const STATUS_COLORS = {
+      idle: 'idle', running: 'running', stopped: 'stopped',
+      completed: 'completed', error: 'error'
+    };
+
+    function render(state) {
+      const dot    = document.getElementById('status-dot');
+      const txt    = document.getElementById('status-text');
+      const cube   = document.getElementById('current-cube');
+      const btnS   = document.getElementById('btn-start');
+      const btnSt  = document.getElementById('btn-stop');
+      const errBox = document.getElementById('error-box');
+
+      const status = state.status || 'idle';
+
+      // Dot + text
+      dot.className = `dot ${STATUS_COLORS[status] || 'idle'}`;
+      txt.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+
+      // Current cube
+      cube.textContent = state.current_cube
+        ? `Processing cube: ${state.current_cube}`
+        : '';
+
+      // Counters
+      setCounter('cnt-questions', state.questions_generated || 0);
+      setCounter('cnt-mdx',       state.mdx_generated       || 0);
+      setCounter('cnt-uploaded',  state.uploaded_count       || 0);
+      setCounter('cnt-target',    state.target_count  || 200);
+
+      // Progress
+      const pct = state.target_count > 0
+        ? Math.min(100, Math.round((state.uploaded_count / state.target_count) * 100))
+        : 0;
+      document.getElementById('progress-fill').style.width  = pct + '%';
+      document.getElementById('progress-pct').textContent   = pct + '%';
+      document.getElementById('progress-label').textContent =
+        `${state.uploaded_count || 0} / ${state.target_count || 200} records`;
+
+      // Buttons
+      const isRunning = status === 'running';
+      btnS.disabled  = isRunning;
+      btnSt.disabled = !isRunning;
+
+      // Error
+      if (state.last_error && state.last_error !== lastState.last_error) {
+        errBox.textContent = '⚠ ' + state.last_error;
+        errBox.style.display = 'block';
+        log('Error: ' + state.last_error, 'error');
+      } else if (!state.last_error) {
+        errBox.style.display = 'none';
+      }
+
+      // Log state transitions
+      if (state.status !== lastState.status) {
+        const msgs = {
+          running:   '▶ Pipeline started',
+          stopped:   '⏹ Pipeline stopped cleanly',
+          completed: '✅ Pipeline completed — all records uploaded',
+          error:     '❌ Pipeline encountered an error',
+          idle:      '◉ Idle',
+        };
+        if (msgs[state.status]) log(msgs[state.status], state.status === 'error' ? 'error' : 'ok');
+      }
+
+      if ((state.uploaded_count || 0) > (lastState.uploaded_count || 0)) {
+        const delta = (state.uploaded_count || 0) - (lastState.uploaded_count || 0);
+        log(`Uploaded ${delta} new record(s) — total: ${state.uploaded_count}`, 'ok');
+      }
+
+      if ((state.questions_generated || 0) > (lastState.questions_generated || 0)) {
+        log(`Generated ${state.questions_generated} question(s) so far`, 'info');
+      }
+
+      lastState = { ...state };
+    }
+
+    /* ── Animated counter ────────────────────────────────────────────── */
+    function setCounter(id, value) {
+      const el  = document.getElementById(id);
+      const cur = parseInt(el.textContent) || 0;
+      if (cur === value) return;
+      el.textContent = value;
+    }
+
+    /* ── API calls ───────────────────────────────────────────────────── */
+    async function fetchStatus() {
+      try {
+        const res = await fetch(`${API}/pipeline/status`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        render(data);
+      } catch (err) {
+        log('Could not reach backend: ' + err.message, 'warn');
+      }
+    }
+
+    async function startPipeline() {
+      try {
+        log('Sending start request…', 'info');
+        const res  = await fetch(`${API}/pipeline/start`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) { log(data.detail || 'Start failed', 'warn'); return; }
+        log(data.message, 'ok');
+        fetchStatus();
+      } catch (err) {
+        log('Start request failed: ' + err.message, 'error');
+      }
+    }
+
+    async function stopPipeline() {
+      try {
+        log('Sending stop request…', 'info');
+        const res  = await fetch(`${API}/pipeline/stop`, { method: 'POST' });
+        const data = await res.json();
+        log(data.message, 'warn');
+        fetchStatus();
+      } catch (err) {
+        log('Stop request failed: ' + err.message, 'error');
+      }
+    }
+
+    /* ── Bootstrap ───────────────────────────────────────────────────── */
+    log('UI loaded — connecting to backend…', 'info');
+    fetchStatus();
+    pollTimer = setInterval(fetchStatus, 2000);
+  </script>
+</body>
+</html>

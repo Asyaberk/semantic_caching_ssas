@@ -1,5 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 from backend.orchestrator import Orchestrator
 
@@ -20,6 +23,15 @@ app.add_middleware(
 
 # One orchestrator instance shared across all requests
 _orchestrator = Orchestrator()
+
+# Serve the frontend UI (must be mounted after defining API routes)
+_frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Serve the Admin UI at the root path."""
+    return FileResponse(os.path.join(_frontend_dir, "index.html"))
 
 
 # ── Health ────────────────────────────────────────────────────────────────
