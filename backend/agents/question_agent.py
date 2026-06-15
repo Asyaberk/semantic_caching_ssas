@@ -126,17 +126,28 @@ class QuestionGeneratorAgent:
             )
 
         try:
-            response = self._call_llm(user_prompt)
+            response  = self._call_llm(user_prompt)
             questions = self._parse_response(response.choices[0].message.content)
 
-            # Log successful result to Langfuse
+            # Log the LLM call as a generation — this populates model, tokens and
+            # cost in Langfuse (generation is the correct object type for LLM calls).
             if trace:
-                trace.update(
-                    output={"questions_count": len(questions), "questions": questions},
+                trace.generation(
+                    name="openai-completion",
+                    model=settings.openai_model,
+                    input=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user",   "content": user_prompt},
+                    ],
+                    output=response.choices[0].message.content,
                     usage={
                         "input":  response.usage.prompt_tokens,
                         "output": response.usage.completion_tokens,
+                        "total":  response.usage.total_tokens,
                     },
+                )
+                trace.update(
+                    output={"questions_count": len(questions), "questions": questions},
                 )
 
             logger.info("Generated %d questions for cube '%s'.", len(questions), cube_name)

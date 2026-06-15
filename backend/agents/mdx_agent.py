@@ -103,14 +103,13 @@ class MDXGeneratorAgent:
         schema_text = self._get_schema_text(cube_name)
         user_prompt = self._build_prompt(schema_text, question, cube_name)
 
-        # Start Langfuse trace and span when available
+        # Start Langfuse trace when available
         trace = None
-        span  = None
         if self._langfuse:
-            trace = self._langfuse.trace(name="mdx_generation", tags=["mdx-agent"])
-            span  = trace.span(
-                name="generate_mdx",
+            trace = self._langfuse.trace(
+                name="mdx_generation",
                 input={"question": question, "cube_name": cube_name},
+                tags=["mdx-agent"],
             )
 
         try:
@@ -144,13 +143,21 @@ class MDXGeneratorAgent:
                 upload_status="pending",
             )
 
-            if span:
-                span.end(
-                    output={"mdx": pair.mdx, "complexity": str(pair.complexity)},
+            # Log the LLM call as a generation — populates model, tokens and cost in Langfuse.
+            if trace:
+                trace.generation(
+                    name="openai-completion",
+                    model=settings.openai_model,
+                    input=params["messages"],
+                    output=raw,
                     usage={
                         "input":  response.usage.prompt_tokens,
                         "output": response.usage.completion_tokens,
+                        "total":  response.usage.total_tokens,
                     },
+                )
+                trace.update(
+                    output={"mdx": pair.mdx, "complexity": str(pair.complexity)},
                 )
 
             logger.info("MDX generated for: '%s'", question[:70])

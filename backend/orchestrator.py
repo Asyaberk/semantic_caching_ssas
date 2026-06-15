@@ -133,6 +133,16 @@ class Orchestrator:
         batch_size  = settings.questions_per_batch
         language    = settings.question_language
 
+        # Seçenek 2: read existing Qdrant record count so we don't
+        # re-generate records that are already in the collection.
+        existing = uploader.get_collection_count()
+        if existing > 0:
+            logger.info(
+                "Cube '%s': %d records already in Qdrant — resuming from there.",
+                cube_name, existing,
+            )
+            self._update_state(uploaded_count=existing)
+
         while not self._stop_event.is_set():
             with self._lock:
                 already_uploaded = self._state.uploaded_count

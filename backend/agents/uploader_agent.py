@@ -25,8 +25,8 @@ from backend.models.schemas import QAPair
 
 logger = logging.getLogger(__name__)
 
-# Dimension of text-embedding-3-small output vectors
-EMBEDDING_DIM = 1536
+EMBEDDING_DIM      = 1536
+DUPLICATE_THRESHOLD = 0.95   # cosine similarity above which we skip a new record
 
 
 class QdrantUploaderAgent:
@@ -80,6 +80,19 @@ class QdrantUploaderAgent:
 
     # ── Public API ────────────────────────────────────────────────────────
 
+    def get_collection_count(self) -> int:
+        """
+        Return the number of vectors currently stored in the collection.
+        Used by the orchestrator to initialise its uploaded_count counter
+        so restarts don't re-generate records that already exist.
+        """
+        try:
+            info = self.qdrant.get_collection(self.collection)
+            return info.points_count or 0
+        except Exception as exc:
+            logger.warning("Could not fetch collection count: %s", exc)
+            return 0
+
     def upload(self, pairs: list[QAPair], batch_size: int = 10) -> int:
         """
         Embed questions and upsert all QAPairs into Qdrant.
@@ -96,44 +109,76 @@ class QdrantUploaderAgent:
             return 0
 
         uploaded = 0
+        skipped  = 0
 
         # Process in batches
         for batch_start in range(0, len(pairs), batch_size):
             batch = pairs[batch_start: batch_start + batch_size]
 
             try:
-                points = [self._to_point(pair) for pair in batch]
+                # Filter out near-duplicates before uploading (Seçenek 3)
+                points: list[PointStruct] = []
+                for pair in batch:
+                    vector = self._embed(pair.question)
+                    if self._is_near_duplicate(vector):
+                        logger.info(
+                            "Skipping near-duplicate: '%s'", pair.question[:60]
+                        )
+                        skipped += 1
+                        continue
+                    points.append(self._build_point(pair, vector))
+
+                if not points:
+                    continue
+
                 self.qdrant.upsert(
                     collection_name=self.collection,
                     points=points,
                 )
-                uploaded += len(batch)
+                uploaded += len(points)
                 logger.info(
-                    "Uploaded batch %d-%d (%d/%d total).",
+                    "Uploaded batch %d–%d (%d uploaded, %d skipped so far).",
                     batch_start + 1,
                     batch_start + len(batch),
                     uploaded,
-                    len(pairs),
+                    skipped,
                 )
             except Exception as exc:
                 logger.error(
-                    "Batch %d-%d failed — skipping: %s",
+                    "Batch %d–%d failed — skipping: %s",
                     batch_start + 1,
                     batch_start + len(batch),
                     exc,
                 )
 
-        logger.info("Upload complete: %d / %d records uploaded.", uploaded, len(pairs))
+        logger.info(
+            "Upload complete: %d uploaded, %d skipped as near-duplicates (total input: %d).",
+            uploaded, skipped, len(pairs),
+        )
         return uploaded
 
     # ── Private helpers ───────────────────────────────────────────────────
 
-    def _to_point(self, pair: QAPair) -> PointStruct:
-        """Convert a QAPair into a Qdrant PointStruct ready for upsert."""
-        vector  = self._embed(pair.question)
-        point_id = self._make_id(pair.cube_name, pair.question)
+    def _is_near_duplicate(self, vector: list[float]) -> bool:
+        """
+        Return True if a very similar question (similarity >= DUPLICATE_THRESHOLD)
+        already exists in the collection.
 
-        payload = {
+        This prevents semantically identical questions from being stored multiple
+        times when the pipeline is restarted or the LLM rephrases the same idea.
+        """
+        results = self.qdrant.search(
+            collection_name=self.collection,
+            query_vector=vector,
+            limit=1,
+            score_threshold=DUPLICATE_THRESHOLD,
+        )
+        return len(results) > 0
+
+    def _build_point(self, pair: QAPair, vector: list[float]) -> PointStruct:
+        """Convert a QAPair and its pre-computed vector into a Qdrant PointStruct."""
+        point_id = self._make_id(pair.cube_name, pair.question)
+        payload  = {
             "question":        pair.question,
             "mdx":             pair.mdx,
             "cube_name":       pair.cube_name,
@@ -141,7 +186,6 @@ class QdrantUploaderAgent:
             "measures_used":   pair.measures_used,
             "complexity":      pair.complexity.value if pair.complexity else "medium",
         }
-
         return PointStruct(id=point_id, vector=vector, payload=payload)
 
     def _embed(self, text: str) -> list[float]:

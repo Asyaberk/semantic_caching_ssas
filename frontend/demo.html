@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Semantic Cache Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f8f9fc;
+      --surface:   #ffffff;
+      --border:    #e4e7ef;
+      --accent:    #4361ee;
+      --accent-lt: #eef1ff;
+      --green:     #16a34a;
+      --green-lt:  #dcfce7;
+      --amber:     #d97706;
+      --amber-lt:  #fef3c7;
+      --text:      #111827;
+      --muted:     #6b7280;
+      --radius:    14px;
+      --shadow:    0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 20px 80px;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; margin-bottom: 40px; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 14px;
+      background: var(--accent-lt);
+      color: var(--accent);
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+    }
+
+    header h1 {
+      font-size: 2.1rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    header p {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 520px;
+    }
+
+    /* ── Search box ── */
+    .search-wrap {
+      width: 100%;
+      max-width: 720px;
+      margin-bottom: 32px;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 10px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 10px 10px 18px;
+      box-shadow: var(--shadow);
+      transition: border-color 0.2s;
+    }
+
+    .search-box:focus-within { border-color: var(--accent); }
+
+    #question-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.97rem;
+      color: var(--text);
+      background: transparent;
+    }
+
+    #question-input::placeholder { color: var(--muted); }
+
+    #ask-btn {
+      padding: 10px 22px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    #ask-btn:hover   { background: #3451d1; }
+    #ask-btn:active  { transform: scale(0.97); }
+    #ask-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    /* ── Example chips ── */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chip {
+      padding: 6px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .chip:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-lt);
+    }
+
+    /* ── Loader ── */
+    #loader {
+      display: none;
+      width: 100%;
+      max-width: 720px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      box-shadow: var(--shadow);
+      align-items: center;
+      gap: 16px;
+    }
+
+    .spinner {
+      width: 22px; height: 22px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loader-text { font-size: 0.9rem; color: var(--muted); }
+    .loader-text strong { color: var(--text); }
+
+    /* ── Result card ── */
+    #result {
+      display: none;
+      width: 100%;
+      max-width: 720px;
+      flex-direction: column;
+      gap: 16px;
+      animation: fadeUp 0.35s ease both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-header {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      border-radius: 99px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+
+    .status-badge.hit  { background: var(--green-lt); color: var(--green); }
+    .status-badge.miss { background: var(--amber-lt); color: var(--amber); }
+
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+    }
+    .hit  .status-dot { background: var(--green); }
+    .miss .status-dot { background: var(--amber); }
+
+    .timing-pill {
+      margin-left: auto;
+      padding: 4px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .result-meta { display: flex; flex-direction: column; gap: 10px; }
+
+    .meta-row { display: flex; gap: 8px; align-items: flex-start; }
+
+    .meta-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      min-width: 110px;
+      margin-top: 2px;
+    }
+
+    .meta-value { font-size: 0.9rem; color: var(--text); }
+
+    .similarity-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 6px;
+      background: var(--bg);
+      border-radius: 99px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.6s ease;
+    }
+
+    .bar-fill.hit  { background: var(--green); }
+    .bar-fill.miss { background: var(--amber); }
+
+    .bar-score { font-size: 0.85rem; font-weight: 600; min-width: 38px; text-align: right; }
+    .bar-score.hit  { color: var(--green); }
+    .bar-score.miss { color: var(--amber); }
+
+    /* ── MDX block ── */
+    .mdx-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .mdx-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .mdx-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .source-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 99px;
+      letter-spacing: 0.3px;
+    }
+
+    .source-tag.cache { background: var(--green-lt); color: var(--green); }
+    .source-tag.llm   { background: var(--amber-lt); color: var(--amber); }
+
+    #mdx-content {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.8;
+      padding: 20px;
+      color: #1e293b;
+      white-space: pre;
+      overflow-x: auto;
+      background: #f8fafc;
+    }
+
+    /* ── Explanation banner ── */
+    .explain-banner {
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      border: 1px solid;
+    }
+
+    .explain-banner.hit {
+      background: var(--green-lt);
+      border-color: #bbf7d0;
+      color: #15803d;
+    }
+
+    .explain-banner.miss {
+      background: var(--amber-lt);
+      border-color: #fde68a;
+      color: #92400e;
+    }
+
+    /* ── History ── */
+    #history-wrap {
+      width: 100%;
+      max-width: 720px;
+      margin-top: 32px;
+      display: none;
+    }
+
+    .history-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+
+    .history-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .history-item:hover { border-color: var(--accent); }
+
+    .h-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .h-dot.hit  { background: var(--green); }
+    .h-dot.miss { background: var(--amber); }
+
+    .h-question { font-size: 0.85rem; flex: 1; }
+    .h-time { font-size: 0.75rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="badge">⚡ Semantic Cache Demo</div>
+  <h1>Ask the SSAS Cube</h1>
+  <p>Type a business question. If it's been asked before, the answer comes from cache instantly. Otherwise the LLM generates a fresh MDX query.</p>
+</header>
+
+<!-- Search -->
+<div class="search-wrap">
+  <div class="search-box">
+    <input id="question-input" type="text"
+      placeholder="e.g. What is Net Revenue for Turkey in 2025?"
+      onkeydown="if(event.key==='Enter') ask()" />
+    <button id="ask-btn" onclick="ask()">Ask →</button>
+  </div>
+  <div class="chips" id="chips"></div>
+</div>
+
+<!-- Loader -->
+<div id="loader">
+  <div class="spinner"></div>
+  <div class="loader-text"><strong id="loader-label">Searching cache…</strong></div>
+</div>
+
+<!-- Result -->
+<div id="result">
+
+  <!-- Header card -->
+  <div class="result-header">
+    <div class="status-row">
+      <span class="status-badge" id="status-badge">
+        <span class="status-dot"></span>
+        <span id="status-label">—</span>
+      </span>
+      <span class="timing-pill" id="timing-pill">—</span>
+    </div>
+
+    <div class="result-meta">
+      <div class="meta-row">
+        <span class="meta-label">Your question</span>
+        <span class="meta-value" id="r-question">—</span>
+      </div>
+      <div class="meta-row" id="row-matched">
+        <span class="meta-label">Cached match</span>
+        <span class="meta-value" id="r-matched">—</span>
+      </div>
+      <div class="meta-row" id="row-similarity">
+        <span class="meta-label">Similarity</span>
+        <div class="similarity-bar">
+          <div class="bar-track"><div class="bar-fill" id="bar-fill"></div></div>
+          <span class="bar-score" id="bar-score">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Explanation -->
+  <div class="explain-banner" id="explain-banner"></div>
+
+  <!-- MDX -->
+  <div class="mdx-card">
+    <div class="mdx-header">
+      <span class="mdx-title">MDX Query</span>
+      <span class="source-tag" id="source-tag">—</span>
+    </div>
+    <pre id="mdx-content"></pre>
+  </div>
+
+</div>
+
+<!-- History -->
+<div id="history-wrap">
+  <div class="history-title">Query history</div>
+  <div class="history-list" id="history-list"></div>
+</div>
+
+<script>
+  const EXAMPLES = [
+    "What is Net Revenue for Turkey in 2025?",
+    "Which country had the lowest order count?",
+    "Show Gross Margin for Bikes in 2024 Q1",
+    "Premium customers in Germany revenue",
+    "Compare 2024 and 2025 total sales",
+    "Monthly Net Revenue trend for 2025",
+  ];
+
+  const history = [];
+
+  // ── Render example chips ──────────────────────────────────────────────
+  const chipsEl = document.getElementById('chips');
+  EXAMPLES.forEach(ex => {
+    const c = document.createElement('div');
+    c.className = 'chip';
+    c.textContent = ex;
+    c.onclick = () => { document.getElementById('question-input').value = ex; ask(); };
+    chipsEl.appendChild(c);
+  });
+
+  // ── Ask ───────────────────────────────────────────────────────────────
+  async function ask() {
+    const q = document.getElementById('question-input').value.trim();
+    if (!q) return;
+
+    setLoading(true, 'Searching cache…');
+    hide('result');
+
+    try {
+      const res  = await fetch('/demo/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, cube_name: 'Sales', threshold: 0.75 }),
+      });
+      const data = await res.json();
+      renderResult(data);
+      addHistory(data);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Render result ─────────────────────────────────────────────────────
+  function renderResult(d) {
+    const isHit = d.status === 'hit';
+
+    // Status badge
+    const badge = document.getElementById('status-badge');
+    badge.className = `status-badge ${d.status}`;
+    document.getElementById('status-label').textContent =
+      isHit ? '✓ Cache Hit' : '○ Cache Miss';
+
+    // Timing
+    document.getElementById('timing-pill').textContent =
+      `${d.response_time_ms} ms`;
+
+    // Question
+    document.getElementById('r-question').textContent = d.question;
+
+    // Matched question
+    const rowMatched = document.getElementById('row-matched');
+    if (d.matched_question) {
+      rowMatched.style.display = 'flex';
+      document.getElementById('r-matched').textContent = d.matched_question;
+    } else {
+      rowMatched.style.display = 'none';
+    }
+
+    // Similarity bar
+    const rowSim = document.getElementById('row-similarity');
+    if (d.similarity !== null && d.similarity !== undefined) {
+      rowSim.style.display = 'flex';
+      const pct = Math.round(d.similarity * 100);
+      const fill = document.getElementById('bar-fill');
+      fill.style.width = pct + '%';
+      fill.className = `bar-fill ${d.status}`;
+      const score = document.getElementById('bar-score');
+      score.textContent = d.similarity.toFixed(3);
+      score.className = `bar-score ${d.status}`;
+    } else {
+      rowSim.style.display = 'none';
+    }
+
+    // Explanation banner
+    const banner = document.getElementById('explain-banner');
+    banner.className = `explain-banner ${d.status}`;
+    if (isHit) {
+      banner.innerHTML = `
+        <strong>⚡ Answered from cache</strong> — This question closely matched
+        <em>"${d.matched_question}"</em> with a similarity of
+        <strong>${d.similarity.toFixed(3)}</strong>.
+        No LLM call was needed. Response time: <strong>${d.response_time_ms} ms</strong>.`;
+    } else {
+      const sim = d.similarity !== null ? ` (best match score: ${d.similarity?.toFixed(3)})` : '';
+      banner.innerHTML = `
+        <strong>🔄 Generated by LLM</strong> — No close match found in cache${sim}.
+        A new MDX query was generated using <strong>gpt-5-nano</strong> and
+        <strong>saved to cache</strong> — next time this question is asked, it will be a hit.
+        Response time: <strong>${d.response_time_ms} ms</strong>.`;
+    }
+
+    // MDX
+    document.getElementById('mdx-content').textContent = d.mdx;
+    const tag = document.getElementById('source-tag');
+    tag.className = `source-tag ${d.source}`;
+    tag.textContent = d.source === 'cache' ? '⚡ From Cache' : '🤖 Generated by LLM';
+
+    show('result');
+  }
+
+  // ── History ───────────────────────────────────────────────────────────
+  function addHistory(d) {
+    history.unshift(d);
+    const list = document.getElementById('history-list');
+    list.innerHTML = '';
+    history.slice(0, 8).forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'history-item';
+      el.innerHTML = `
+        <div class="h-dot ${item.status}"></div>
+        <div class="h-question">${item.question}</div>
+        <div class="h-time">${item.response_time_ms}ms</div>`;
+      el.onclick = () => {
+        document.getElementById('question-input').value = item.question;
+        renderResult(item);
+      };
+      list.appendChild(el);
+    });
+    show('history-wrap');
+  }
+
+  // ── Utils ─────────────────────────────────────────────────────────────
+  function setLoading(on, msg = '') {
+    const loader  = document.getElementById('loader');
+    const btn     = document.getElementById('ask-btn');
+    loader.style.display  = on ? 'flex' : 'none';
+    btn.disabled = on;
+    if (msg) document.getElementById('loader-label').textContent = msg;
+  }
+
+  function show(id) { document.getElementById(id).style.display = 'flex'; }
+  function hide(id) { document.getElementById(id).style.display = 'none'; }
+</script>
+</body>
+</html>

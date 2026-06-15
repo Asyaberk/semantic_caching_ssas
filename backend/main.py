@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 import os
 
 from backend.orchestrator import Orchestrator
+from backend.demo_router import router as demo_router
 
 app = FastAPI(
     title="SSAS Semantic Cache Seeder",
@@ -24,6 +25,9 @@ app.add_middleware(
 # One orchestrator instance shared across all requests
 _orchestrator = Orchestrator()
 
+# Demo router (semantic cache query)
+app.include_router(demo_router)
+
 # Serve the frontend UI (must be mounted after defining API routes)
 _frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
@@ -32,6 +36,12 @@ _frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
 async def root():
     """Serve the Admin UI at the root path."""
     return FileResponse(os.path.join(_frontend_dir, "index.html"))
+
+
+@app.get("/demo", include_in_schema=False)
+async def demo_ui():
+    """Serve the Semantic Cache Demo UI."""
+    return FileResponse(os.path.join(_frontend_dir, "demo.html"))
 
 
 # ── Health ────────────────────────────────────────────────────────────────
