@@ -19,6 +19,8 @@
       --green-lt:  #dcfce7;
       --amber:     #d97706;
       --amber-lt:  #fef3c7;
+      --red:       #dc2626;
+      --red-lt:    #fee2e2;
       --text:      #111827;
       --muted:     #6b7280;
       --radius:    14px;
@@ -36,7 +38,6 @@
       padding: 48px 20px 80px;
     }
 
-    /* ── Header ── */
     header { text-align: center; margin-bottom: 40px; }
 
     .badge {
@@ -48,135 +49,92 @@
       font-size: 0.75rem;
       font-weight: 600;
       letter-spacing: 0.5px;
-      margin-bottom: 14px;
+      margin-bottom: 16px;
     }
 
-    header h1 {
-      font-size: 2.1rem;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: var(--text);
-    }
+    header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    header p  { color: var(--muted); font-size: 0.95rem; max-width: 480px; margin: 0 auto; }
 
-    header p {
-      margin-top: 10px;
-      color: var(--muted);
-      font-size: 0.95rem;
-      max-width: 520px;
-    }
-
-    /* ── Search box ── */
-    .search-wrap {
-      width: 100%;
-      max-width: 720px;
-      margin-bottom: 32px;
-    }
-
-    .search-box {
-      display: flex;
-      gap: 10px;
-      background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 10px 10px 18px;
-      box-shadow: var(--shadow);
-      transition: border-color 0.2s;
-    }
-
-    .search-box:focus-within { border-color: var(--accent); }
-
-    #question-input {
-      flex: 1;
-      border: none;
-      outline: none;
-      font-family: 'Inter', sans-serif;
-      font-size: 0.97rem;
-      color: var(--text);
-      background: transparent;
-    }
-
-    #question-input::placeholder { color: var(--muted); }
-
-    #ask-btn {
-      padding: 10px 22px;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-family: 'Inter', sans-serif;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s, transform 0.1s;
-      white-space: nowrap;
-    }
-
-    #ask-btn:hover   { background: #3451d1; }
-    #ask-btn:active  { transform: scale(0.97); }
-    #ask-btn:disabled { background: #a5b4fc; cursor: not-allowed; }
-
-    /* ── Example chips ── */
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .chip {
-      padding: 6px 14px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 99px;
-      font-size: 0.8rem;
-      color: var(--muted);
-      cursor: pointer;
-      transition: all 0.15s;
-      user-select: none;
-    }
-
-    .chip:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: var(--accent-lt);
-    }
-
-    /* ── Loader ── */
-    #loader {
-      display: none;
+    /* ── Search card ── */
+    .search-card {
       width: 100%;
       max-width: 720px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 32px;
       box-shadow: var(--shadow);
-      align-items: center;
-      gap: 16px;
+      padding: 28px;
+      margin-bottom: 28px;
     }
 
-    .spinner {
-      width: 22px; height: 22px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      flex-shrink: 0;
+    .field-label { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+
+    .search-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .search-row textarea {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      resize: vertical;
+      min-height: 60px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-row textarea:focus { border-color: var(--accent); }
+
+    .cube-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .cube-row select {
+      padding: 9px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      background: #fff;
     }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-ask {
+      padding: 10px 28px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-ask:hover { background: #3251d4; }
+    .btn-ask:active { transform: scale(0.97); }
+    .btn-ask:disabled { background: var(--muted); cursor: not-allowed; }
 
-    .loader-text { font-size: 0.9rem; color: var(--muted); }
-    .loader-text strong { color: var(--text); }
+    /* ── Examples ── */
+    .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .example-chip {
+      padding: 6px 14px;
+      background: var(--accent-lt);
+      color: var(--accent);
+      border-radius: 99px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s;
+    }
+    .example-chip:hover { background: #dde4ff; }
 
     /* ── Result card ── */
-    #result {
-      display: none;
+    .result-card {
       width: 100%;
       max-width: 720px;
-      flex-direction: column;
-      gap: 16px;
-      animation: fadeUp 0.35s ease both;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      animation: fadeUp 0.3s ease;
     }
 
     @keyframes fadeUp {
@@ -185,429 +143,381 @@
     }
 
     .result-header {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 24px 28px;
-      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .status-row {
+    .status-pill {
+      padding: 5px 14px;
+      border-radius: 99px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .status-pill.hit  { background: var(--green-lt);  color: var(--green); }
+    .status-pill.miss { background: var(--amber-lt); color: var(--amber); }
+
+    .result-header .timing {
+      margin-left: auto;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .result-body { padding: 20px 24px; }
+
+    .meta-row { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 16px; }
+    .meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .meta-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .meta-value { font-size: 0.9rem; font-weight: 500; }
+
+    .similarity-bar { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+    .bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 99px; background: var(--green); transition: width 0.5s ease; }
+
+    .mdx-label { font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .mdx-block {
+      background: #f1f3f9;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    /* ── Feedback row ── */
+    .feedback-row {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 18px;
-    }
-
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 14px;
-      border-radius: 99px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.3px;
-    }
-
-    .status-badge.hit  { background: var(--green-lt); color: var(--green); }
-    .status-badge.miss { background: var(--amber-lt); color: var(--amber); }
-
-    .status-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-    }
-    .hit  .status-dot { background: var(--green); }
-    .miss .status-dot { background: var(--amber); }
-
-    .timing-pill {
-      margin-left: auto;
-      padding: 4px 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 99px;
-      font-size: 0.78rem;
-      color: var(--muted);
-      font-weight: 500;
-    }
-
-    .result-meta { display: flex; flex-direction: column; gap: 10px; }
-
-    .meta-row { display: flex; gap: 8px; align-items: flex-start; }
-
-    .meta-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      min-width: 110px;
-      margin-top: 2px;
-    }
-
-    .meta-value { font-size: 0.9rem; color: var(--text); }
-
-    .similarity-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .bar-track {
-      flex: 1;
-      height: 6px;
-      background: var(--bg);
-      border-radius: 99px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-
-    .bar-fill {
-      height: 100%;
-      border-radius: 99px;
-      transition: width 0.6s ease;
-    }
-
-    .bar-fill.hit  { background: var(--green); }
-    .bar-fill.miss { background: var(--amber); }
-
-    .bar-score { font-size: 0.85rem; font-weight: 600; min-width: 38px; text-align: right; }
-    .bar-score.hit  { color: var(--green); }
-    .bar-score.miss { color: var(--amber); }
-
-    /* ── MDX block ── */
-    .mdx-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .mdx-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
       background: var(--bg);
     }
-
-    .mdx-title {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .source-tag {
-      font-size: 0.72rem;
-      font-weight: 700;
-      padding: 3px 10px;
-      border-radius: 99px;
-      letter-spacing: 0.3px;
-    }
-
-    .source-tag.cache { background: var(--green-lt); color: var(--green); }
-    .source-tag.llm   { background: var(--amber-lt); color: var(--amber); }
-
-    #mdx-content {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.82rem;
-      line-height: 1.8;
-      padding: 20px;
-      color: #1e293b;
-      white-space: pre;
-      overflow-x: auto;
-      background: #f8fafc;
-    }
-
-    /* ── Explanation banner ── */
-    .explain-banner {
-      border-radius: var(--radius);
-      padding: 18px 22px;
-      font-size: 0.88rem;
-      line-height: 1.6;
-      border: 1px solid;
-    }
-
-    .explain-banner.hit {
-      background: var(--green-lt);
-      border-color: #bbf7d0;
-      color: #15803d;
-    }
-
-    .explain-banner.miss {
-      background: var(--amber-lt);
-      border-color: #fde68a;
-      color: #92400e;
-    }
-
-    /* ── History ── */
-    #history-wrap {
-      width: 100%;
-      max-width: 720px;
-      margin-top: 32px;
-      display: none;
-    }
-
-    .history-title {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 10px;
-    }
-
-    .history-list { display: flex; flex-direction: column; gap: 6px; }
-
-    .history-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 16px;
-      background: var(--surface);
-      border: 1px solid var(--border);
+    .feedback-label { font-size: 0.85rem; color: var(--muted); }
+    .btn-feedback {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 18px;
       border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: border-color 0.15s;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      transition: all 0.15s;
     }
+    .btn-feedback:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-feedback.positive:hover { border-color: var(--green); color: var(--green); background: var(--green-lt); }
+    .btn-feedback.negative:hover { border-color: var(--red); color: var(--red); background: var(--red-lt); }
+    .btn-feedback.active-pos { border-color: var(--green); color: var(--green); background: var(--green-lt); }
+    .btn-feedback.active-neg { border-color: var(--red); color: var(--red); background: var(--red-lt); }
+    .feedback-sent { font-size: 0.82rem; color: var(--green); font-weight: 500; }
 
-    .history-item:hover { border-color: var(--accent); }
+    /* ── Paraphrase notice ── */
+    .paraphrase-notice {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 24px;
+      background: var(--accent-lt);
+      border-top: 1px solid var(--border);
+      font-size: 0.82rem;
+      color: var(--accent);
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--accent);
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    .h-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .h-dot.hit  { background: var(--green); }
-    .h-dot.miss { background: var(--amber); }
+    /* ── Spinner overlay ── */
+    .loading-row { display: flex; align-items: center; gap: 12px; padding: 20px 24px; color: var(--muted); font-size: 0.9rem; }
 
-    .h-question { font-size: 0.85rem; flex: 1; }
-    .h-time { font-size: 0.75rem; color: var(--muted); }
+    /* ── Admin link ── */
+    .admin-link { margin-top: 40px; font-size: 0.85rem; color: var(--muted); }
+    .admin-link a { color: var(--accent); text-decoration: none; }
+    .admin-link a:hover { text-decoration: underline; }
+
+    .hidden { display: none !important; }
+
+  /* SSAS result table */
+  .ssas-section { margin-top: 18px; }
+  .ssas-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: linear-gradient(135deg,#7c3aed,#4f46e5);
+    color: #fff; border: none; border-radius: 8px;
+    padding: 8px 18px; font-size: .85rem; font-weight: 600;
+    cursor: pointer; transition: opacity .2s;
+  }
+  .ssas-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .ssas-btn:hover:not(:disabled) { opacity: .85; }
+  .result-table-wrap { overflow-x: auto; margin-top: 12px; border-radius: 8px; border: 1px solid var(--border); }
+  .result-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .result-table th { background: var(--surface); color: var(--muted); font-weight: 600;
+    padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .result-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); color: var(--fg); }
+  .result-table tr:last-child td { border-bottom: none; }
+  .result-table tr:hover td { background: rgba(255,255,255,.03); }
+  .ssas-meta { font-size: .75rem; color: var(--muted); margin-top: 6px; }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="badge">⚡ Semantic Cache Demo</div>
-  <h1>Ask the SSAS Cube</h1>
-  <p>Type a business question. If it's been asked before, the answer comes from cache instantly. Otherwise the LLM generates a fresh MDX query.</p>
+  <div class="badge">🔍 Semantic Cache</div>
+  <h1>Cache Demo</h1>
+  <p>Ask a business question. If it's been asked before, the answer comes from cache instantly. Otherwise, the LLM generates it — and caches it for next time.</p>
 </header>
 
 <!-- Search -->
-<div class="search-wrap">
-  <div class="search-box">
-    <input id="question-input" type="text"
-      placeholder="e.g. What is Net Revenue for Turkey in 2025?"
-      onkeydown="if(event.key==='Enter') ask()" />
-    <button id="ask-btn" onclick="ask()">Ask →</button>
-  </div>
-  <div class="chips" id="chips"></div>
-</div>
+  <div class="search-card">
+    <div class="field-label">Your question</div>
+    <div class="search-row">
+      <textarea id="question" placeholder="e.g. What is the total accruement for Turkey in 2025?" rows="2"></textarea>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+      <button class="btn-ask" id="askBtn" onclick="ask()">Ask →</button>
+      <span style="font-size:.78rem;color:var(--muted)">The system will automatically find the right cube.</span>
+    </div>
 
-<!-- Loader -->
-<div id="loader">
-  <div class="spinner"></div>
-  <div class="loader-text"><strong id="loader-label">Searching cache…</strong></div>
+    <div class="examples">
+      <span class="field-label" style="align-self:center; margin-bottom:0">Try:</span>
+      <button class="example-chip" onclick="setQ('What is the total accruement for Turkey in 2025?')">Total accruement Turkey 2025</button>
+      <button class="example-chip" onclick="setQ('Show me vessel waiting times for 2024')">Vessel waiting times 2024</button>
+      <button class="example-chip" onclick="setQ('How many vessel orders were there in 2025?')">Vessel orders count 2025</button>
+    </div>
 </div>
 
 <!-- Result -->
-<div id="result">
+<div id="result" class="result-card hidden"></div>
 
-  <!-- Header card -->
-  <div class="result-header">
-    <div class="status-row">
-      <span class="status-badge" id="status-badge">
-        <span class="status-dot"></span>
-        <span id="status-label">—</span>
-      </span>
-      <span class="timing-pill" id="timing-pill">—</span>
-    </div>
-
-    <div class="result-meta">
-      <div class="meta-row">
-        <span class="meta-label">Your question</span>
-        <span class="meta-value" id="r-question">—</span>
-      </div>
-      <div class="meta-row" id="row-matched">
-        <span class="meta-label">Cached match</span>
-        <span class="meta-value" id="r-matched">—</span>
-      </div>
-      <div class="meta-row" id="row-similarity">
-        <span class="meta-label">Similarity</span>
-        <div class="similarity-bar">
-          <div class="bar-track"><div class="bar-fill" id="bar-fill"></div></div>
-          <span class="bar-score" id="bar-score">—</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Explanation -->
-  <div class="explain-banner" id="explain-banner"></div>
-
-  <!-- MDX -->
-  <div class="mdx-card">
-    <div class="mdx-header">
-      <span class="mdx-title">MDX Query</span>
-      <span class="source-tag" id="source-tag">—</span>
-    </div>
-    <pre id="mdx-content"></pre>
-  </div>
-
-</div>
-
-<!-- History -->
-<div id="history-wrap">
-  <div class="history-title">Query history</div>
-  <div class="history-list" id="history-list"></div>
-</div>
+<div class="admin-link">← Back to <a href="/">Admin Panel</a></div>
 
 <script>
-  const EXAMPLES = [
-    "What is Net Revenue for Turkey in 2025?",
-    "Which country had the lowest order count?",
-    "Show Gross Margin for Bikes in 2024 Q1",
-    "Premium customers in Germany revenue",
-    "Compare 2024 and 2025 total sales",
-    "Monthly Net Revenue trend for 2025",
-  ];
+  let currentQuestion  = '';
+  let currentCube      = '';
+  let currentPairId    = null;
+  let currentFeedback  = null;
 
-  const history = [];
+  function setQ(q) {
+    document.getElementById('question').value = q;
+  }
 
-  // ── Render example chips ──────────────────────────────────────────────
-  const chipsEl = document.getElementById('chips');
-  EXAMPLES.forEach(ex => {
-    const c = document.createElement('div');
-    c.className = 'chip';
-    c.textContent = ex;
-    c.onclick = () => { document.getElementById('question-input').value = ex; ask(); };
-    chipsEl.appendChild(c);
-  });
-
-  // ── Ask ───────────────────────────────────────────────────────────────
   async function ask() {
-    const q = document.getElementById('question-input').value.trim();
-    if (!q) return;
+    const question = document.getElementById('question').value.trim();
+    if (!question) return;
 
-    setLoading(true, 'Searching cache…');
-    hide('result');
+    currentQuestion = question;
+    currentCube     = null;
+    currentPairId   = null;
+    currentMdx      = '';
+    document.getElementById('ssasResult') && (document.getElementById('ssasResult').innerHTML = '');
+    currentFeedback = null;
+
+    const btn = document.getElementById('askBtn');
+    btn.disabled = true;
+    btn.textContent = 'Searching…';
+
+    const resultEl = document.getElementById('result');
+    resultEl.classList.remove('hidden');
+    resultEl.innerHTML = `
+      <div class="loading-row">
+        <div class="spinner"></div>
+        Searching across all cubes…
+      </div>`;
 
     try {
       const res  = await fetch('/demo/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, cube_name: 'Sales', threshold: 0.75 }),
+        body: JSON.stringify({ question }),
       });
       const data = await res.json();
+      currentCube   = data.cube_name;
+      currentPairId = data.pair_id || null;
       renderResult(data);
-      addHistory(data);
-    } catch (err) {
-      alert('Error: ' + err.message);
+    } catch (e) {
+      resultEl.innerHTML = `<div class="loading-row" style="color:#dc2626">Error: ${e.message}</div>`;
     } finally {
-      setLoading(false);
+      btn.disabled    = false;
+      btn.textContent = 'Ask →';
     }
   }
 
-  // ── Render result ─────────────────────────────────────────────────────
   function renderResult(d) {
-    const isHit = d.status === 'hit';
+    currentMdx = d.mdx || '';
+    const isHit  = d.status === 'hit';
+    const sim    = d.similarity != null ? (d.similarity * 100).toFixed(1) : null;
+    const simBar = sim ? `
+      <div class="similarity-bar">
+        <div class="bar-track"><div class="bar-fill" style="width:${sim}%"></div></div>
+        <span style="font-size:.8rem;color:var(--muted)">${sim}%</span>
+      </div>` : '';
 
-    // Status badge
-    const badge = document.getElementById('status-badge');
-    badge.className = `status-badge ${d.status}`;
-    document.getElementById('status-label').textContent =
-      isHit ? '✓ Cache Hit' : '○ Cache Miss';
+    const matchedRow = d.matched_question ? `
+      <div class="meta-item">
+        <span class="meta-label">Matched question</span>
+        <span class="meta-value" style="font-style:italic;color:var(--muted)">"${escHtml(d.matched_question)}"</span>
+      </div>` : '';
 
-    // Timing
-    document.getElementById('timing-pill').textContent =
-      `${d.response_time_ms} ms`;
+    const paraphraseNotice = !isHit ? `
+      <div class="paraphrase-notice">
+        <div class="spinner"></div>
+        Generating 5 similar phrasings and caching them in the background…
+      </div>` : '';
 
-    // Question
-    document.getElementById('r-question').textContent = d.question;
+    document.getElementById('result').innerHTML = `
+      <div class="result-header">
+        <div class="status-pill ${isHit ? 'hit' : 'miss'}">${isHit ? '✓ Cache Hit' : '⚡ Cache Miss'}</div>
+        <span style="font-size:.82rem;color:var(--muted)">${isHit ? 'Served from Qdrant' : 'Generated by LLM'}</span>
+        <span class="timing">⏱ ${d.response_time_ms} ms</span>
+      </div>
 
-    // Matched question
-    const rowMatched = document.getElementById('row-matched');
-    if (d.matched_question) {
-      rowMatched.style.display = 'flex';
-      document.getElementById('r-matched').textContent = d.matched_question;
-    } else {
-      rowMatched.style.display = 'none';
-    }
+      <div class="result-body">
+        <div class="meta-row">
+          ${sim != null ? `
+          <div class="meta-item">
+            <span class="meta-label">Similarity</span>
+            ${simBar}
+          </div>` : ''}
+          ${matchedRow}
+          <div class="meta-item">
+            <span class="meta-label">Cube</span>
+            <span class="meta-value" style="font-size:.82rem;background:var(--accent-lt);color:var(--accent);padding:2px 10px;border-radius:99px">${escHtml(d.cube_name)}</span>
+          </div>
+        </div>
 
-    // Similarity bar
-    const rowSim = document.getElementById('row-similarity');
-    if (d.similarity !== null && d.similarity !== undefined) {
-      rowSim.style.display = 'flex';
-      const pct = Math.round(d.similarity * 100);
-      const fill = document.getElementById('bar-fill');
-      fill.style.width = pct + '%';
-      fill.className = `bar-fill ${d.status}`;
-      const score = document.getElementById('bar-score');
-      score.textContent = d.similarity.toFixed(3);
-      score.className = `bar-score ${d.status}`;
-    } else {
-      rowSim.style.display = 'none';
-    }
+        <div class="mdx-label">Generated MDX Query</div>
+        <div class="mdx-block">${escHtml(d.mdx || '(no MDX)')}</div>
 
-    // Explanation banner
-    const banner = document.getElementById('explain-banner');
-    banner.className = `explain-banner ${d.status}`;
-    if (isHit) {
-      banner.innerHTML = `
-        <strong>⚡ Answered from cache</strong> — This question closely matched
-        <em>"${d.matched_question}"</em> with a similarity of
-        <strong>${d.similarity.toFixed(3)}</strong>.
-        No LLM call was needed. Response time: <strong>${d.response_time_ms} ms</strong>.`;
-    } else {
-      const sim = d.similarity !== null ? ` (best match score: ${d.similarity?.toFixed(3)})` : '';
-      banner.innerHTML = `
-        <strong>🔄 Generated by LLM</strong> — No close match found in cache${sim}.
-        A new MDX query was generated using <strong>gpt-5-nano</strong> and
-        <strong>saved to cache</strong> — next time this question is asked, it will be a hit.
-        Response time: <strong>${d.response_time_ms} ms</strong>.`;
-    }
+        ${d.mdx ? `
+        <div class="ssas-section">
+          <button class="ssas-btn" id="runBtn" onclick="runOnSSAS()">
+            &#9654;&nbsp; Run on SSAS
+          </button>
+          <div id="ssasResult"></div>
+        </div>` : ''}
+      </div>
 
-    // MDX
-    document.getElementById('mdx-content').textContent = d.mdx;
-    const tag = document.getElementById('source-tag');
-    tag.className = `source-tag ${d.source}`;
-    tag.textContent = d.source === 'cache' ? '⚡ From Cache' : '🤖 Generated by LLM';
+      <div class="feedback-row" id="feedbackRow">
+        <span class="feedback-label">Was this answer helpful?</span>
+        <button class="btn-feedback positive" id="btnPos" onclick="sendFeedback('positive')">👍 Yes</button>
+        <button class="btn-feedback negative" id="btnNeg" onclick="sendFeedback('negative')">👎 Flag</button>
+        <span class="feedback-sent hidden" id="feedbackSent"></span>
+      </div>
 
-    show('result');
+      ${paraphraseNotice}
+    `;
   }
 
-  // ── History ───────────────────────────────────────────────────────────
-  function addHistory(d) {
-    history.unshift(d);
-    const list = document.getElementById('history-list');
-    list.innerHTML = '';
-    history.slice(0, 8).forEach(item => {
-      const el = document.createElement('div');
-      el.className = 'history-item';
-      el.innerHTML = `
-        <div class="h-dot ${item.status}"></div>
-        <div class="h-question">${item.question}</div>
-        <div class="h-time">${item.response_time_ms}ms</div>`;
-      el.onclick = () => {
-        document.getElementById('question-input').value = item.question;
-        renderResult(item);
-      };
-      list.appendChild(el);
-    });
-    show('history-wrap');
+  async function runOnSSAS() {
+    if (!currentMdx) return;
+    const btn = document.getElementById('runBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '&#8987;&nbsp; Running...'; }
+    const out = document.getElementById('ssasResult');
+    if (out) out.innerHTML = '<div style="font-size:.8rem;color:var(--muted);margin-top:8px">Querying SSAS...</div>';
+
+    try {
+      const res  = await fetch('/demo/execute', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ mdx: currentMdx }),
+      });
+      const data = await res.json();
+
+      // Soft error = simplified query note; hard error = no rows + error text
+      const isHardError = data.error && (!data.rows || data.rows.length === 0);
+      if (isHardError) {
+        if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">⚠ ${escHtml(data.error)}</div>`;
+        return;
+      }
+      if (!data.rows || data.rows.length === 0) {
+        if (out) out.innerHTML = '<div style="font-size:.8rem;color:var(--muted);margin-top:8px">No results returned.</div>';
+        return;
+      }
+
+      const cols = data.columns.map(c => c.name);
+      let html = '<div class="result-table-wrap"><table class="result-table"><thead><tr>';
+      cols.forEach(c => {
+        const short = c.replace(/\[Measures\]\./, '').replace(/[\[\]]/g, '');
+        html += `<th title="${escHtml(c)}">${escHtml(short)}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      data.rows.slice(0, 100).forEach(row => {
+        html += '<tr>';
+        cols.forEach(c => {
+          const val = row[c];
+          const display = val == null ? '—' : (typeof val === 'number' ? val.toLocaleString() : val);
+          html += `<td>${escHtml(String(display))}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      html += `<div class="ssas-meta">${data.row_count} row(s)${data.elapsed_ms ? ' &middot; SSAS: ' + data.elapsed_ms + 'ms' : ''}</div>`;
+      if (data.error) {
+        html += `<div style="font-size:.73rem;color:#d97706;margin-top:4px">${escHtml(data.error)}</div>`;
+      }
+      if (out) out.innerHTML = html;
+    } catch(e) {
+      if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">Request failed: ${escHtml(e.message)}</div>`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '&#9654;&nbsp; Run on SSAS'; }
+    }
   }
 
-  // ── Utils ─────────────────────────────────────────────────────────────
-  function setLoading(on, msg = '') {
-    const loader  = document.getElementById('loader');
-    const btn     = document.getElementById('ask-btn');
-    loader.style.display  = on ? 'flex' : 'none';
-    btn.disabled = on;
-    if (msg) document.getElementById('loader-label').textContent = msg;
+  async function sendFeedback(type) {
+    if (currentFeedback === type) return;
+    currentFeedback = type;
+
+    const btnPos  = document.getElementById('btnPos');
+    const btnNeg  = document.getElementById('btnNeg');
+    const sentEl  = document.getElementById('feedbackSent');
+
+    btnPos.classList.remove('active-pos');
+    btnNeg.classList.remove('active-neg');
+
+    if (type === 'positive') btnPos.classList.add('active-pos');
+    else                     btnNeg.classList.add('active-neg');
+
+    try {
+      await fetch('/demo/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pair_id:       currentPairId,
+          question:      currentQuestion,
+          cube_name:     currentCube || '',
+          feedback:      type,
+          user_question: currentQuestion,  // always the raw text the user typed
+        }),
+      });
+      sentEl.textContent = type === 'positive' ? '✓ Marked as helpful' : '⚑ Flagged for review';
+      sentEl.classList.remove('hidden');
+    } catch (e) {
+      sentEl.textContent = 'Could not save feedback.';
+      sentEl.style.color = 'var(--red)';
+      sentEl.classList.remove('hidden');
+    }
   }
 
-  function show(id) { document.getElementById(id).style.display = 'flex'; }
-  function hide(id) { document.getElementById(id).style.display = 'none'; }
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  document.getElementById('question').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+  });
 </script>
 </body>
 </html>

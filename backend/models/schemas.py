@@ -44,13 +44,15 @@ class PipelineState(BaseModel):
     current_cube:         Optional[str]  = None
     total_cubes:          int            = 0
 
-    # Cumulative counters
+    # Cumulative counters (grand total across all cubes)
     questions_generated:  int            = 0
     mdx_generated:        int            = 0
-    uploaded_count:       int            = 0
+    uploaded_count:       int            = 0   # grand total in Qdrant
 
-    # Target (read from config, filled in by orchestrator)
-    target_count:         int            = 0
+    # Per-cube progress
+    cube_uploaded_count:  int            = 0   # uploaded for the current cube only
+    cube_target:          int            = 0   # target per cube (= settings.questions_per_cube)
+    cube_progress:        dict           = {}  # {cube_name: uploaded_count}
 
     # Error tracking
     last_error:           Optional[str]  = None

@@ -5,13 +5,24 @@ from fastapi.responses import FileResponse
 import os
 
 from backend.orchestrator import Orchestrator
-from backend.demo_router import router as demo_router
+from backend.demo_router  import router as demo_router
+from backend.admin_router import router as admin_router
+from backend.db.database  import init_db
 
 app = FastAPI(
     title="SSAS Semantic Cache Seeder",
     description="Scans an SSAS Cube, generates question/MDX pairs using an LLM, and uploads them to Qdrant.",
     version="0.1.0",
 )
+
+@app.on_event("startup")
+async def on_startup():
+    """Run schema migrations on every startup so all columns exist before requests arrive."""
+    try:
+        init_db()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("init_db failed at startup: %s", exc)
 
 # Allow requests from the frontend dev server (e.g. localhost:3001)
 app.add_middleware(
@@ -25,8 +36,11 @@ app.add_middleware(
 # One orchestrator instance shared across all requests
 _orchestrator = Orchestrator()
 
-# Demo router (semantic cache query)
+# Demo router (semantic cache query + feedback)
 app.include_router(demo_router)
+
+# Admin router (cache management CRUD)
+app.include_router(admin_router)
 
 # Serve the frontend UI (must be mounted after defining API routes)
 _frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")

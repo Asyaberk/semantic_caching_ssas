@@ -33,10 +33,11 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"
 
-    # ── Pipeline ────────────────────────────────────────────
+    # ── Pipeline ──────────────────────────────────────────────
     questions_per_batch: int = 20
+    questions_per_cube:  int = 50    # target records to generate per cube
     target_question_count: int = 200
-    question_language: str = "tr"
+    question_language:   str = "tr"
 
     # ── SSAS (real connection, only used when USE_MOCK_CUBE=false) ──
     ssas_url:         str = ""

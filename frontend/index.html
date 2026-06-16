@@ -3,26 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SSAS Cache Seeder</title>
+  <title>SSAS Cache Seeder — Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
-    /* ── Reset & Base ─────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:          #0a0d14;
-      --surface:     #111520;
-      --surface2:    #181d2e;
-      --border:      rgba(255,255,255,0.07);
-      --accent:      #4f8ef7;
-      --accent-glow: rgba(79,142,247,0.25);
-      --green:       #22c55e;
-      --yellow:      #f59e0b;
-      --red:         #ef4444;
-      --text:        #e2e8f0;
-      --muted:       #64748b;
-      --radius:      14px;
+      --bg:        #f4f6fb;
+      --surface:   #ffffff;
+      --border:    #e2e8f0;
+      --accent:    #4361ee;
+      --accent-lt: #eef1ff;
+      --green:     #16a34a;
+      --green-lt:  #dcfce7;
+      --red:       #dc2626;
+      --red-lt:    #fee2e2;
+      --amber:     #d97706;
+      --amber-lt:  #fef3c7;
+      --text:      #0f172a;
+      --muted:     #64748b;
+      --radius:    12px;
+      --shadow:    0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.06);
     }
 
     body {
@@ -30,479 +32,605 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 28px 16px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 40px 20px 60px;
+      gap: 4px;
+      flex-shrink: 0;
     }
 
-    /* ── Header ───────────────────────────────────────────────────────── */
-    header {
-      text-align: center;
-      margin-bottom: 40px;
-    }
-
-    header h1 {
-      font-size: 2rem;
+    .sidebar .brand {
       font-weight: 700;
-      letter-spacing: -0.5px;
-      background: linear-gradient(135deg, #e2e8f0 0%, var(--accent) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      font-size: 1rem;
+      color: var(--accent);
+      padding: 0 8px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
     }
+    .sidebar .brand span { display: block; font-size: 0.7rem; font-weight: 500; color: var(--muted); margin-top: 2px; }
 
-    header p {
-      margin-top: 8px;
-      color: var(--muted);
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
       font-size: 0.9rem;
-    }
-
-    /* ── Main grid ────────────────────────────────────────────────────── */
-    .grid {
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      border: none;
+      background: none;
       width: 100%;
-      max-width: 900px;
-      display: grid;
-      gap: 16px;
-      grid-template-columns: 1fr 1fr;
+      text-align: left;
+      transition: all 0.15s;
     }
+    .nav-item:hover { background: var(--bg); color: var(--text); }
+    .nav-item.active { background: var(--accent-lt); color: var(--accent); }
 
+    .main { flex: 1; padding: 36px 40px; overflow-y: auto; }
+
+    .page-header { margin-bottom: 28px; }
+    .page-header h1 { font-size: 1.5rem; font-weight: 700; }
+    .page-header p  { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+
+    /* ── Cards ── */
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 28px;
-      position: relative;
-      overflow: hidden;
-      transition: border-color 0.3s;
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 20px;
     }
 
-    .card:hover { border-color: rgba(79,142,247,0.25); }
-
-    .card::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(79,142,247,0.04) 0%, transparent 60%);
-      pointer-events: none;
-    }
-
-    .card.full  { grid-column: 1 / -1; }
-    .card.wide  { grid-column: 1 / -1; }
-
-    .card-label {
-      font-size: 0.72rem;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 12px;
-    }
-
-    /* ── Status badge ─────────────────────────────────────────────────── */
-    .status-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--muted);
-      flex-shrink: 0;
-      transition: background 0.4s;
-    }
-    .dot.idle      { background: var(--muted); }
-    .dot.running   { background: var(--green); animation: pulse 1.4s infinite; }
-    .dot.stopped   { background: var(--yellow); }
-    .dot.completed { background: var(--green); }
-    .dot.error     { background: var(--red); }
-
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
-      50%       { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
-    }
-
-    #status-text {
-      font-size: 1.4rem;
-      font-weight: 600;
-      text-transform: capitalize;
-      letter-spacing: -0.3px;
-    }
-
-    #current-cube {
-      margin-top: 6px;
-      font-size: 0.85rem;
-      color: var(--muted);
-      min-height: 20px;
-    }
-
-    /* ── Counter cards ────────────────────────────────────────────────── */
-    .counter-value {
-      font-size: 2.4rem;
-      font-weight: 700;
-      letter-spacing: -1px;
-      color: var(--text);
-      line-height: 1;
-      margin-bottom: 6px;
-      font-variant-numeric: tabular-nums;
-      transition: color 0.3s;
-    }
-
-    .counter-value.highlight { color: var(--accent); }
-
-    .counter-sub {
+    .card-title {
       font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    /* ── Progress bar ─────────────────────────────────────────────────── */
-    .progress-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-
-    .progress-pct {
-      font-size: 0.9rem;
       font-weight: 600;
-      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin-bottom: 14px;
     }
 
-    .progress-track {
-      height: 8px;
-      background: var(--surface2);
-      border-radius: 99px;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      border-radius: 99px;
-      background: linear-gradient(90deg, var(--accent) 0%, #7eb3ff 100%);
-      transition: width 0.6s ease;
-      width: 0%;
-    }
-
-    /* ── Buttons ──────────────────────────────────────────────────────── */
-    .btn-row {
-      display: flex;
-      gap: 12px;
-      margin-top: 8px;
-    }
-
-    .btn {
+    /* ── Stats row ── */
+    .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+    .stat-card {
       flex: 1;
-      padding: 14px 20px;
-      border: none;
-      border-radius: 10px;
-      font-family: inherit;
-      font-size: 0.95rem;
+      min-width: 140px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+    .stat-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 1.75rem; font-weight: 700; margin-top: 4px; color: var(--accent); }
+
+    /* ── Progress bar ── */
+    .progress-track { height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+    .progress-fill  { height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.5s ease; }
+
+    /* ── Pipeline buttons ── */
+    .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+    .btn {
+      padding: 9px 22px;
+      border-radius: 8px;
+      font-size: 0.88rem;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
+      border: none;
+      transition: all 0.15s;
     }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #3251d4; }
+    .btn-danger  { background: var(--red-lt); color: var(--red); border: 1px solid #fca5a5; }
+    .btn-danger:hover { background: #fecaca; }
+    .btn-ghost   { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--border); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .btn::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: rgba(255,255,255,0);
-      transition: background 0.2s;
+    /* ── Status badge ── */
+    .status-badge {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
     }
+    .status-running   { background: var(--accent-lt); color: var(--accent); }
+    .status-completed { background: var(--green-lt);  color: var(--green); }
+    .status-stopped   { background: var(--amber-lt);  color: var(--amber); }
+    .status-error     { background: var(--red-lt);    color: var(--red); }
+    .status-idle      { background: var(--bg);        color: var(--muted); border: 1px solid var(--border); }
 
-    .btn:hover::after { background: rgba(255,255,255,0.06); }
-    .btn:active { transform: scale(0.97); }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-
-    #btn-start {
-      background: linear-gradient(135deg, var(--accent) 0%, #3b6fd4 100%);
-      color: #fff;
-      box-shadow: 0 4px 20px var(--accent-glow);
-    }
-
-    #btn-stop {
-      background: var(--surface2);
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-
-    /* ── Log panel ────────────────────────────────────────────────────── */
-    #log-box {
-      background: #080b12;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px;
-      height: 200px;
-      overflow-y: auto;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    /* ── Log box ── */
+    .log-box {
+      font-family: 'JetBrains Mono', monospace;
       font-size: 0.78rem;
       line-height: 1.7;
-    }
-
-    #log-box::-webkit-scrollbar { width: 4px; }
-    #log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
-
-    .log-line { color: var(--muted); }
-    .log-line.info  { color: #93c5fd; }
-    .log-line.ok    { color: var(--green); }
-    .log-line.warn  { color: var(--yellow); }
-    .log-line.error { color: var(--red); }
-
-    /* ── Last error ───────────────────────────────────────────────────── */
-    #error-box {
-      display: none;
-      margin-top: 12px;
-      padding: 12px 16px;
-      background: rgba(239,68,68,0.1);
-      border: 1px solid rgba(239,68,68,0.3);
+      background: #f8fafc;
+      border: 1px solid var(--border);
       border-radius: 8px;
-      font-size: 0.82rem;
-      color: #fca5a5;
+      padding: 14px;
+      max-height: 200px;
+      overflow-y: auto;
+      color: var(--muted);
     }
 
-    /* ── Footer ───────────────────────────────────────────────────────── */
-    footer {
-      margin-top: 40px;
-      font-size: 0.75rem;
-      color: var(--muted);
-      text-align: center;
+    /* ── Tab pages ── */
+    .tab-page { display: none; }
+    .tab-page.active { display: block; }
+
+    /* ── Cache table ── */
+    .filter-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; }
+    .filter-row select,
+    .filter-row input {
+      padding: 8px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      background: #fff;
     }
+    .filter-row select:focus,
+    .filter-row input:focus { border-color: var(--accent); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; padding: 10px 12px; font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+    td { padding: 12px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:hover td { background: var(--bg); }
+    tr.flagged td { background: #fff7f7; }
+
+    .feedback-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .feedback-badge.positive { background: var(--green-lt); color: var(--green); }
+    .feedback-badge.negative { background: var(--red-lt);   color: var(--red); }
+    .feedback-badge.none     { background: var(--bg);       color: var(--muted); border: 1px solid var(--border); }
+
+    .q-cell { max-width: 260px; }
+    .q-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; display: block; }
+    .mdx-preview { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; display: block; }
+
+    .action-btn {
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      transition: all 0.15s;
+    }
+    .action-btn:hover { background: var(--bg); }
+    .action-btn.del { color: var(--red); border-color: #fca5a5; }
+    .action-btn.del:hover { background: var(--red-lt); }
+
+    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
+    .page-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 0.82rem; }
+    .page-btn:hover { background: var(--bg); }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.25);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      animation: fadeIn 0.15s;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .modal-overlay.hidden { display: none; }
+
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      padding: 28px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+    .modal .modal-sub { font-size: 0.8rem; color: var(--muted); margin-bottom: 16px; }
+    .modal textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      resize: vertical;
+      min-height: 160px;
+      outline: none;
+    }
+    .modal textarea:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+
+    .empty-state { text-align: center; padding: 48px 0; color: var(--muted); font-size: 0.9rem; }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1>⚡ SSAS Cache Seeder</h1>
-    <p>Generates question / MDX pairs and uploads them to Qdrant for semantic caching.</p>
-  </header>
+<div class="layout">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="brand">⚡ Cache Seeder <span>Admin Panel</span></div>
+    <button class="nav-item active" id="nav-pipeline" onclick="switchTab('pipeline')">📊 Pipeline</button>
+    <button class="nav-item" id="nav-cache" onclick="switchTab('cache')">🗂 Cache Management</button>
+    <a href="/demo" style="text-decoration:none; margin-top:auto">
+      <button class="nav-item">🔍 Demo UI</button>
+    </a>
+  </nav>
 
-  <div class="grid">
+  <!-- Main content -->
+  <main class="main">
 
-    <!-- Status card -->
-    <div class="card full">
-      <div class="card-label">Pipeline Status</div>
-      <div class="status-row">
-        <div class="dot idle" id="status-dot"></div>
-        <span id="status-text">Idle</span>
+    <!-- ══ Pipeline Tab ══ -->
+    <div class="tab-page active" id="tab-pipeline">
+      <div class="page-header">
+        <h1>Pipeline Status</h1>
+        <p>Monitor and control the cache seeding pipeline.</p>
       </div>
-      <div id="current-cube"></div>
-    </div>
 
-    <!-- Progress bar -->
-    <div class="card wide">
-      <div class="card-label">Upload Progress</div>
-      <div class="progress-header">
-        <span id="progress-label">0 / 0 records</span>
-        <span class="progress-pct" id="progress-pct">0%</span>
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Status</div>
+          <div style="margin-top:8px" id="statusBadge"><span class="status-badge status-idle">idle</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Uploaded</div>
+          <div class="stat-value" id="uploaded">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Per-cube Target</div>
+          <div class="stat-value" id="cubeTarget">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Cube Progress</div>
+          <div class="stat-value" id="cubeUploaded">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">MDX Generated</div>
+          <div class="stat-value" id="mdxGen">—</div>
+        </div>
       </div>
-      <div class="progress-track">
-        <div class="progress-fill" id="progress-fill"></div>
+
+      <!-- Progress -->
+      <div class="card">
+        <div class="card-title">Current Cube Progress</div>
+        <div id="cubeLabel" style="font-size:.85rem;color:var(--muted);margin-bottom:8px">—</div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:6px" id="progressLabel">0 / 0 per cube</div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="startBtn" onclick="startPipeline()">&#9654; Start</button>
+          <button class="btn btn-danger"  id="stopBtn"  onclick="stopPipeline()" disabled>&#9632; Stop</button>
+        </div>
+      </div>
+
+      <!-- Log stream -->
+      <div class="card">
+        <div class="card-title">Live Log</div>
+        <div class="log-box" id="logBox">Waiting for pipeline…</div>
       </div>
     </div>
 
-    <!-- Counter: questions -->
-    <div class="card">
-      <div class="card-label">Questions Generated</div>
-      <div class="counter-value" id="cnt-questions">0</div>
-      <div class="counter-sub">natural language questions</div>
-    </div>
-
-    <!-- Counter: MDX -->
-    <div class="card">
-      <div class="card-label">MDX Queries</div>
-      <div class="counter-value" id="cnt-mdx">0</div>
-      <div class="counter-sub">MDX queries generated</div>
-    </div>
-
-    <!-- Counter: uploaded -->
-    <div class="card">
-      <div class="card-label">Uploaded to Qdrant</div>
-      <div class="counter-value highlight" id="cnt-uploaded">0</div>
-      <div class="counter-sub">records in vector DB</div>
-    </div>
-
-    <!-- Counter: target -->
-    <div class="card">
-      <div class="card-label">Target</div>
-      <div class="counter-value" id="cnt-target">200</div>
-      <div class="counter-sub">records per cube</div>
-    </div>
-
-    <!-- Controls -->
-    <div class="card wide">
-      <div class="card-label">Controls</div>
-      <div class="btn-row">
-        <button class="btn" id="btn-start" onclick="startPipeline()">▶ Start Pipeline</button>
-        <button class="btn" id="btn-stop"  onclick="stopPipeline()" disabled>⏹ Stop</button>
+    <!-- ══ Cache Management Tab ══ -->
+    <div class="tab-page" id="tab-cache">
+      <div class="page-header">
+        <h1>Cache Management</h1>
+        <p>Inspect, edit and delete cached Q&amp;A pairs. Flagged rows are highlighted in red.</p>
       </div>
-      <div id="error-box"></div>
+
+      <!-- Filters -->
+      <div class="card">
+        <div class="filter-row">
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Cube</div>
+            <select id="filterCube" onchange="loadCache(1)">
+              <option value="">All cubes</option>
+              <option>cubeAccruement</option>
+              <option>cubeCreditDebit</option>
+              <option>cubeDwellTimeRoro</option>
+              <option>cubeGangPoint</option>
+              <option>cubeGeneralJobOrders</option>
+              <option>cubeOtherJobOrders</option>
+              <option>cubeVesselJobOrder</option>
+              <option>cubeVesselOrder</option>
+              <option>cubeWaiting</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Feedback</div>
+            <select id="filterFeedback" onchange="loadCache(1)">
+              <option value="">All</option>
+              <option value="negative">⚑ Flagged</option>
+              <option value="positive">✓ Verified</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost" onclick="loadCache(1)" style="height:38px;align-self:flex-end">↺ Refresh</button>
+          <span id="cacheCount" style="align-self:flex-end;font-size:.82rem;color:var(--muted)"></span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Question</th>
+                <th>Cube</th>
+                <th>Feedback</th>
+                <th>MDX Preview</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="cacheTableBody">
+              <tr><td colspan="6" class="empty-state">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <button class="page-btn" id="prevPage" onclick="changePage(-1)" disabled>← Prev</button>
+          <span id="pageInfo">Page 1</span>
+          <button class="page-btn" id="nextPage" onclick="changePage(1)">Next →</button>
+        </div>
+      </div>
     </div>
 
-    <!-- Live log -->
-    <div class="card wide">
-      <div class="card-label">Activity Log</div>
-      <div id="log-box"></div>
-    </div>
+  </main>
+</div>
 
+<!-- Edit Modal -->
+<div class="modal-overlay hidden" id="editModal">
+  <div class="modal">
+    <h3>Edit MDX Query</h3>
+    <div class="modal-sub" id="editModalSub"></div>
+    <textarea id="editMdxArea" spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMdx()">Save changes</button>
+    </div>
   </div>
+</div>
 
-  <footer>
-    Polling every 2s &nbsp;·&nbsp; Backend: <a href="/docs" style="color:var(--accent)">localhost:8002/docs</a>
-  </footer>
+<script>
+  // ── Tab switching ─────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.getElementById('nav-' + tab).classList.add('active');
+    if (tab === 'cache') loadCache(1);
+  }
 
-  <script>
-    const API = '';   // same origin
-    let pollTimer = null;
-    let lastState = {};
+  // ── Pipeline ──────────────────────────────────────────────────────────────
+  let pollTimer = null;
+  let logLines  = [];
 
-    /* ── Helpers ─────────────────────────────────────────────────────── */
-    function ts() {
-      return new Date().toLocaleTimeString('en-GB', { hour12: false });
+  async function startPipeline() {
+    await fetch('/pipeline/start', { method: 'POST' });
+    pollStatus();
+  }
+  async function stopPipeline() {
+    await fetch('/pipeline/stop', { method: 'POST' });
+  }
+
+  async function pollStatus() {
+    try {
+      const r = await fetch('/pipeline/status');
+      const d = await r.json();
+      updatePipelineUI(d);
+      if (d.status === 'running') {
+        pollTimer = setTimeout(pollStatus, 1500);
+      }
+    } catch (e) {
+      setTimeout(pollStatus, 3000);
     }
+  }
 
-    function log(msg, type = 'info') {
-      const box  = document.getElementById('log-box');
-      const line = document.createElement('div');
-      line.className = `log-line ${type}`;
-      line.textContent = `[${ts()}]  ${msg}`;
-      box.appendChild(line);
-      box.scrollTop = box.scrollHeight;
-      // Keep max 200 lines
-      while (box.children.length > 200) box.removeChild(box.firstChild);
-    }
-
-    /* ── Status rendering ────────────────────────────────────────────── */
-    const STATUS_COLORS = {
-      idle: 'idle', running: 'running', stopped: 'stopped',
-      completed: 'completed', error: 'error'
+  function updatePipelineUI(d) {
+    const statusMap = {
+      running:   'status-running',
+      completed: 'status-completed',
+      stopped:   'status-stopped',
+      error:     'status-error',
+      idle:      'status-idle',
     };
+    const cls = statusMap[d.status] || 'status-idle';
+    document.getElementById('statusBadge').innerHTML =
+      `<span class="status-badge ${cls}">${d.status}</span>`;
 
-    function render(state) {
-      const dot    = document.getElementById('status-dot');
-      const txt    = document.getElementById('status-text');
-      const cube   = document.getElementById('current-cube');
-      const btnS   = document.getElementById('btn-start');
-      const btnSt  = document.getElementById('btn-stop');
-      const errBox = document.getElementById('error-box');
+    document.getElementById('uploaded').textContent     = d.uploaded_count      ?? '—';
+    document.getElementById('cubeTarget').textContent   = d.cube_target         ?? '—';
+    document.getElementById('cubeUploaded').textContent = (d.cube_uploaded_count ?? 0) + ' / ' + (d.cube_target ?? '?');
+    document.getElementById('mdxGen').textContent       = d.mdx_generated       ?? '—';
 
-      const status = state.status || 'idle';
+    // Per-cube progress bar (shows current cube quota)
+    const pct = d.cube_target
+      ? Math.min(100, ((d.cube_uploaded_count ?? 0) / d.cube_target) * 100)
+      : 0;
+    document.getElementById('progressFill').style.width = pct.toFixed(1) + '%';
+    document.getElementById('progressLabel').textContent =
+      `${d.cube_uploaded_count ?? 0} / ${d.cube_target ?? 0} per cube`;
+    document.getElementById('cubeLabel').textContent =
+      d.current_cube
+        ? `Cube: ${d.current_cube}  (${Object.keys(d.cube_progress || {}).length} / ${d.total_cubes} cubes done)`
+        : '—';
 
-      // Dot + text
-      dot.className = `dot ${STATUS_COLORS[status] || 'idle'}`;
-      txt.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    document.getElementById('startBtn').disabled = d.status === 'running';
+    document.getElementById('stopBtn').disabled  = d.status !== 'running';
 
-      // Current cube
-      cube.textContent = state.current_cube
-        ? `Processing cube: ${state.current_cube}`
-        : '';
+    // Log entry
+    const prog = d.cube_progress
+      ? Object.entries(d.cube_progress).map(([k,v]) => `${k.replace('cube','')}:${v}`).join(' ')
+      : '';
+    const line = `[${new Date().toLocaleTimeString()}] ${d.status.toUpperCase()} | ` +
+      `cube: ${d.current_cube ?? '—'} ${d.cube_uploaded_count ?? 0}/${d.cube_target ?? 0}` +
+      ` | total: ${d.uploaded_count} | ${prog}` +
+      (d.last_error ? ` | ERR: ${d.last_error}` : '');
+    logLines.push(line);
+    if (logLines.length > 80) logLines.shift();
+    const box = document.getElementById('logBox');
+    box.textContent = logLines.join('\n');
+    box.scrollTop   = box.scrollHeight;
+  }
 
-      // Counters
-      setCounter('cnt-questions', state.questions_generated || 0);
-      setCounter('cnt-mdx',       state.mdx_generated       || 0);
-      setCounter('cnt-uploaded',  state.uploaded_count       || 0);
-      setCounter('cnt-target',    state.target_count  || 200);
+  // Auto-poll on load
+  pollStatus();
+  setInterval(pollStatus, 5000);
 
-      // Progress
-      const pct = state.target_count > 0
-        ? Math.min(100, Math.round((state.uploaded_count / state.target_count) * 100))
-        : 0;
-      document.getElementById('progress-fill').style.width  = pct + '%';
-      document.getElementById('progress-pct').textContent   = pct + '%';
-      document.getElementById('progress-label').textContent =
-        `${state.uploaded_count || 0} / ${state.target_count || 200} records`;
+  // ── Cache management ──────────────────────────────────────────────────────
+  let cachePage     = 1;
+  let cacheTotalPgs = 1;
+  let editingId     = '';
 
-      // Buttons
-      const isRunning = status === 'running';
-      btnS.disabled  = isRunning;
-      btnSt.disabled = !isRunning;
+  async function loadCache(page = 1) {
+    cachePage = page;
+    const cube     = document.getElementById('filterCube').value;
+    const feedback = document.getElementById('filterFeedback').value;
 
-      // Error
-      if (state.last_error && state.last_error !== lastState.last_error) {
-        errBox.textContent = '⚠ ' + state.last_error;
-        errBox.style.display = 'block';
-        log('Error: ' + state.last_error, 'error');
-      } else if (!state.last_error) {
-        errBox.style.display = 'none';
+    let url = `/admin/cache?page=${page}&page_size=20`;
+    if (cube)     url += `&cube_name=${encodeURIComponent(cube)}`;
+    if (feedback) url += `&feedback=${encodeURIComponent(feedback)}`;
+
+    const tbody = document.getElementById('cacheTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Loading…</td></tr>';
+
+    try {
+      const res  = await fetch(url);
+      const data = await res.json();
+      cacheTotalPgs = Math.max(1, Math.ceil(data.total / 20));
+
+      window.cacheData = window.cacheData || {};
+      data.items.forEach(row => { window.cacheData[row.id] = row; });
+
+      document.getElementById('cacheCount').textContent =
+        `${data.total} record${data.total !== 1 ? 's' : ''}`;
+      document.getElementById('pageInfo').textContent =
+        `Page ${cachePage} of ${cacheTotalPgs}`;
+      document.getElementById('prevPage').disabled = cachePage <= 1;
+      document.getElementById('nextPage').disabled = cachePage >= cacheTotalPgs;
+
+      if (!data.items.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No records found.</td></tr>';
+        return;
       }
 
-      // Log state transitions
-      if (state.status !== lastState.status) {
-        const msgs = {
-          running:   '▶ Pipeline started',
-          stopped:   '⏹ Pipeline stopped cleanly',
-          completed: '✅ Pipeline completed — all records uploaded',
-          error:     '❌ Pipeline encountered an error',
-          idle:      '◉ Idle',
-        };
-        if (msgs[state.status]) log(msgs[state.status], state.status === 'error' ? 'error' : 'ok');
-      }
-
-      if ((state.uploaded_count || 0) > (lastState.uploaded_count || 0)) {
-        const delta = (state.uploaded_count || 0) - (lastState.uploaded_count || 0);
-        log(`Uploaded ${delta} new record(s) — total: ${state.uploaded_count}`, 'ok');
-      }
-
-      if ((state.questions_generated || 0) > (lastState.questions_generated || 0)) {
-        log(`Generated ${state.questions_generated} question(s) so far`, 'info');
-      }
-
-      lastState = { ...state };
+      tbody.innerHTML = data.items.map(row => {
+        const fb    = row.feedback || 'none';
+        const fbTxt = fb === 'positive' ? '✓ Good' : fb === 'negative' ? '⚑ Flagged' : 'None';
+        const date  = row.created_at ? new Date(row.created_at).toLocaleDateString() : '—';
+        return `
+          <tr class="${fb === 'negative' ? 'flagged' : ''}">
+            <td class="q-cell">
+              <span class="q-text" title="${escHtml(row.question)}">${escHtml(row.question)}</span>
+              ${fb === 'negative' && row.user_question && row.user_question !== row.question
+                ? `<span style="display:block;font-size:.72rem;color:var(--red);margin-top:3px" title="User actually asked this">
+                    &#x2514; "${escHtml(row.user_question)}"
+                   </span>`
+                : ''}
+            </td>
+            <td style="white-space:nowrap;font-size:.8rem">${escHtml(row.cube_name)}</td>
+            <td><span class="feedback-badge ${fb}">${fbTxt}</span></td>
+            <td><span class="mdx-preview" title="${escHtml(row.mdx || '')}">${escHtml((row.mdx || '').slice(0, 60))}…</span></td>
+            <td style="white-space:nowrap;font-size:.8rem;color:var(--muted)">${date}</td>
+            <td style="white-space:nowrap;display:flex;gap:6px">
+              <button class="action-btn" onclick="openEdit('${row.id}')">Edit</button>
+              <button class="action-btn del" onclick="deleteEntry('${row.id}')">Delete</button>
+            </td>
+          </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
+  }
 
-    /* ── Animated counter ────────────────────────────────────────────── */
-    function setCounter(id, value) {
-      const el  = document.getElementById(id);
-      const cur = parseInt(el.textContent) || 0;
-      if (cur === value) return;
-      el.textContent = value;
+  function changePage(delta) {
+    const newPage = cachePage + delta;
+    if (newPage >= 1 && newPage <= cacheTotalPgs) loadCache(newPage);
+  }
+
+  // ── Edit modal ─────────────────────────────────────────────────────────────
+  function openEdit(id) {
+    const row = window.cacheData && window.cacheData[id];
+    if (!row) return;
+    editingId = id;
+    document.getElementById('editModalSub').textContent = row.question;
+    document.getElementById('editMdxArea').value = row.mdx || '';
+    document.getElementById('editModal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('editModal').classList.add('hidden');
+    editingId = '';
+  }
+
+  async function saveMdx() {
+    const mdx = document.getElementById('editMdxArea').value.trim();
+    if (!mdx) return;
+
+    try {
+      const res = await fetch(`/admin/cache/${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mdx }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      closeModal();
+      loadCache(cachePage);
+    } catch (e) {
+      alert('Save failed: ' + e.message);
     }
+  }
 
-    /* ── API calls ───────────────────────────────────────────────────── */
-    async function fetchStatus() {
-      try {
-        const res = await fetch(`${API}/pipeline/status`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        render(data);
-      } catch (err) {
-        log('Could not reach backend: ' + err.message, 'warn');
-      }
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  async function deleteEntry(id) {
+    if (!confirm('Delete this cached pair from PostgreSQL and Qdrant?')) return;
+    try {
+      const res = await fetch(`/admin/cache/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await res.text());
+      loadCache(cachePage);
+    } catch (e) {
+      alert('Delete failed: ' + e.message);
     }
+  }
 
-    async function startPipeline() {
-      try {
-        log('Sending start request…', 'info');
-        const res  = await fetch(`${API}/pipeline/start`, { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) { log(data.detail || 'Start failed', 'warn'); return; }
-        log(data.message, 'ok');
-        fetchStatus();
-      } catch (err) {
-        log('Start request failed: ' + err.message, 'error');
-      }
-    }
+  // ── Utils ──────────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 
-    async function stopPipeline() {
-      try {
-        log('Sending stop request…', 'info');
-        const res  = await fetch(`${API}/pipeline/stop`, { method: 'POST' });
-        const data = await res.json();
-        log(data.message, 'warn');
-        fetchStatus();
-      } catch (err) {
-        log('Stop request failed: ' + err.message, 'error');
-      }
-    }
-
-    /* ── Bootstrap ───────────────────────────────────────────────────── */
-    log('UI loaded — connecting to backend…', 'info');
-    fetchStatus();
-    pollTimer = setInterval(fetchStatus, 2000);
-  </script>
+  // Close modal on overlay click
+  document.getElementById('editModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+</script>
 </body>
 </html>
