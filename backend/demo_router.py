@@ -73,6 +73,20 @@ async def query(req: QueryRequest):
     """
     t0 = time.perf_counter()
 
+    # When semantic cache is disabled, skip Qdrant and always call LLM
+    if not settings.enable_semantic_cache:
+        logger.info("Semantic cache disabled — calling LLM directly for '%s'.", req.question)
+        vector = _embed(req.question)
+        pair   = _mdx_agent.generate_for_question(
+            question=req.question, cube_name=req.cube_name
+        )
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        return QueryResponse(
+            status="miss", source="llm",
+            question=req.question, matched_question=None, similarity=None,
+            mdx=pair.mdx, response_time_ms=elapsed_ms, cube_name=req.cube_name,
+        )
+
     # 1. Embed the question
     vector = _embed(req.question)
 

@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ssas_postgres
+    environment:
+      POSTGRES_DB: ssas_cache
+      POSTGRES_USER: ssas
+      POSTGRES_PASSWORD: ssas_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ssas -d ssas_cache"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build: .
     container_name: ssas_seeder_backend
@@ -6,4 +24,10 @@ services:
       - "8002:8002"
     env_file:
       - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  postgres_data:

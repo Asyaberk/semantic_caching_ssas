@@ -3,9 +3,12 @@ Orchestrator
 
 Coordinates the full seeding pipeline:
   1. Discover all cubes via the SchemaProvider
-  2. For each cube, generate questions in batches until the target count is reached
-  3. Generate MDX for each question
-  4. Upload Q&A pairs to Qdrant
+  2. For each cube, check PostgreSQL for existing Q&A pairs:
+     a. If pairs exist → upload them to Qdrant (no LLM call)
+     b. If pairs are missing → generate via LLM → save to PostgreSQL → upload to Qdrant
+  3. Respects feature toggles:
+     - ENABLE_MDX_GENERATION=false → only generate questions, skip MDX step
+     - ENABLE_SEMANTIC_CACHE is used by demo_router, not here
 
 The orchestrator keeps a PipelineState object that is updated in real-time
 so that FastAPI endpoints can serve live progress to the UI.
@@ -22,8 +25,9 @@ from backend.agents.mdx_agent       import MDXGeneratorAgent
 from backend.agents.question_agent  import QuestionGeneratorAgent
 from backend.agents.uploader_agent  import QdrantUploaderAgent
 from backend.config                 import settings
+from backend.db.database            import init_db, load_pairs_for_cube, save_pairs, count_pairs_for_cube
 from backend.mock.cube_formatter    import get_all_cube_names
-from backend.models.schemas         import PipelineState
+from backend.models.schemas         import PipelineState, QAPair
 from backend.services.schema_provider import get_schema_provider
 
 logger = logging.getLogger(__name__)
@@ -89,10 +93,13 @@ class Orchestrator:
     def _run(self) -> None:
         """Main pipeline loop — runs in a background thread."""
         try:
-            provider        = get_schema_provider()
-            q_agent         = QuestionGeneratorAgent(provider=provider)
-            mdx_agent       = MDXGeneratorAgent(provider=provider)
-            uploader        = QdrantUploaderAgent()
+            # Ensure PostgreSQL schema exists before doing anything
+            init_db()
+
+            provider  = get_schema_provider()
+            q_agent   = QuestionGeneratorAgent(provider=provider)
+            mdx_agent = MDXGeneratorAgent(provider=provider)
+            uploader  = QdrantUploaderAgent()
 
             cube_names = get_all_cube_names(provider)
             logger.info("Discovered %d cube(s): %s", len(cube_names), cube_names)
@@ -128,21 +135,40 @@ class Orchestrator:
         """
         Run question → MDX → upload batches for a single cube until the
         target question count is reached or a stop is requested.
+
+        Strategy:
+          1. Load existing Q&A pairs from PostgreSQL (free, no LLM call).
+          2. Upload those to Qdrant if not already there.
+          3. If still below target, generate new pairs via LLM and save them.
         """
-        target      = settings.target_question_count
-        batch_size  = settings.questions_per_batch
-        language    = settings.question_language
+        target     = settings.target_question_count
+        batch_size = settings.questions_per_batch
+        language   = settings.question_language
 
-        # Seçenek 2: read existing Qdrant record count so we don't
-        # re-generate records that are already in the collection.
-        existing = uploader.get_collection_count()
-        if existing > 0:
+        # ── Step 0: load from PostgreSQL and sync to Qdrant ──────────────
+        existing_pairs = load_pairs_for_cube(cube_name)
+        if existing_pairs:
             logger.info(
-                "Cube '%s': %d records already in Qdrant — resuming from there.",
-                cube_name, existing,
+                "Cube '%s': found %d pair(s) in PostgreSQL — uploading to Qdrant.",
+                cube_name, len(existing_pairs),
             )
-            self._update_state(uploaded_count=existing)
+            # Only upload pairs that have MDX (if MDX generation is enabled)
+            pairs_to_upload = [
+                p for p in existing_pairs
+                if p.mdx or not settings.enable_mdx_generation
+            ]
+            uploaded = uploader.upload(pairs_to_upload)
+            self._update_state(
+                questions_generated=len(existing_pairs),
+                mdx_generated=len([p for p in existing_pairs if p.mdx]),
+                uploaded_count=uploaded,
+            )
 
+        # Check Qdrant count as authoritative source for dedup
+        qdrant_count = uploader.get_collection_count()
+        self._update_state(uploaded_count=qdrant_count)
+
+        # ── Step 1–N: generate new pairs until target is reached ──────────
         while not self._stop_event.is_set():
             with self._lock:
                 already_uploaded = self._state.uploaded_count
@@ -153,15 +179,15 @@ class Orchestrator:
                 )
                 break
 
-            remaining   = target - already_uploaded
-            count       = min(batch_size, remaining)
+            remaining = target - already_uploaded
+            count     = min(batch_size, remaining)
 
             logger.info(
                 "Cube '%s': %d/%d uploaded — generating %d more questions.",
                 cube_name, already_uploaded, target, count,
             )
 
-            # ── Step A: generate questions ─────────────────────────────
+            # ── Step A: generate questions ──────────────────────────────
             try:
                 questions = q_agent.generate(
                     cube_name=cube_name,
@@ -176,21 +202,39 @@ class Orchestrator:
                 self._update_state(last_error=str(exc))
                 continue
 
-            # ── Step B: generate MDX ───────────────────────────────────
-            pairs = mdx_agent.generate_batch(questions=questions, cube_name=cube_name)
-            self._update_state(
-                mdx_generated=self._state.mdx_generated + len(pairs)
-            )
+            # ── Step B: generate MDX (optional) ────────────────────────
+            if settings.enable_mdx_generation:
+                pairs = mdx_agent.generate_batch(questions=questions, cube_name=cube_name)
+                self._update_state(
+                    mdx_generated=self._state.mdx_generated + len(pairs)
+                )
+            else:
+                # Questions only — wrap in minimal QAPair objects
+                pairs = [
+                    QAPair(question=q, mdx="", cube_name=cube_name)
+                    for q in questions
+                ]
+                logger.info("MDX generation disabled — storing questions only.")
 
             if not pairs:
-                logger.warning("No MDX pairs generated in this batch — skipping upload.")
+                logger.warning("No pairs generated in this batch — skipping.")
                 continue
 
-            # ── Step C: upload to Qdrant ───────────────────────────────
-            uploaded = uploader.upload(pairs)
-            self._update_state(
-                uploaded_count=self._state.uploaded_count + uploaded
-            )
+            # ── Step C: save to PostgreSQL (persistent backup) ──────────
+            try:
+                save_pairs(pairs)
+            except Exception as exc:
+                logger.warning("PostgreSQL save failed (non-fatal): %s", exc)
+
+            # ── Step D: upload to Qdrant ────────────────────────────────
+            if settings.enable_mdx_generation:
+                uploaded = uploader.upload(pairs)
+                self._update_state(
+                    uploaded_count=self._state.uploaded_count + uploaded
+                )
+            else:
+                # No MDX → nothing meaningful to embed in Qdrant
+                logger.info("Skipping Qdrant upload (MDX generation is disabled).")
 
     # ── State helpers ─────────────────────────────────────────────────────
 

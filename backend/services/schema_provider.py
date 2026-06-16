@@ -7,9 +7,9 @@ cube metadata. Two concrete implementations are provided:
   - MockSchemaProvider: reads from the local mock data file.
     Used during development when no SSAS server is available.
 
-  - SSASSchemaProvider: connects to a live SSAS server via XMLA
-    and discovers cubes, dimensions, measures, and members automatically.
-    The internals are left as a placeholder until a real endpoint is available.
+  - SSASSchemaProvider: connects to the SSAS Bridge REST API
+    (https://daloglumert.com) and discovers cubes, dimensions,
+    measures, and members automatically.
 
 Use get_schema_provider() to obtain the correct implementation based on
 the USE_MOCK_CUBE environment variable. The rest of the application should
@@ -17,7 +17,12 @@ only interact with the SchemaProvider interface, never with mock or SSAS
 classes directly.
 """
 
+import logging
 from abc import ABC, abstractmethod
+
+import httpx
+
+logger = logging.getLogger(__name__)
 
 
 # ── Abstract interface ───────────────────────────────────────────────────────
@@ -83,44 +88,141 @@ class MockSchemaProvider(SchemaProvider):
         return HIERARCHIES
 
 
-# ── SSAS (real) implementation ───────────────────────────────────────────────
+# ── SSAS REST API implementation ─────────────────────────────────────────────
 
 class SSASSchemaProvider(SchemaProvider):
     """
-    Connects to a live SSAS server and fetches cube metadata via XMLA.
+    Fetches cube metadata from the SSAS Bridge REST API.
 
-    When instantiated, it opens a connection to the given endpoint.
-    All methods query the server on demand and return normalised dicts
-    in the same shape as MockSchemaProvider so callers need no changes.
+    The API wraps an SSAS server and exposes cube/dimension/measure
+    discovery via HTTP. All responses are normalised to the same
+    field names used by MockSchemaProvider so the rest of the
+    application requires no changes when switching data sources.
 
-    TODO: implement using the xmla or adodbapi library once a real
-    SSAS endpoint is reachable (e.g. exposed via a secure tunnel).
+    Base URL  : settings.ssas_url   (e.g. https://daloglumert.com)
+    Auth      : X-API-Key header    (settings.ssas_api_key)
+    DataSource: settings.ssas_data_source (default: "main")
     """
 
-    def __init__(self, connection_url: str, api_key: str = ""):
-        self.connection_url = connection_url
-        self.api_key = api_key
-        # TODO: open XMLA session here
+    def __init__(self, connection_url: str, api_key: str = "", data_source: str = "main"):
+        self.base_url    = connection_url.rstrip("/")
+        self.data_source = data_source
+        self._headers    = {
+            "X-API-Key":    api_key,
+            "Content-Type": "application/json",
+        }
+
+    # ── Private helper ────────────────────────────────────────────────────
+
+    def _get(self, path: str, **params) -> dict:
+        """Make an authenticated GET request and return parsed JSON."""
+        params.setdefault("dataSource", self.data_source)
+        resp = httpx.get(
+            f"{self.base_url}{path}",
+            headers=self._headers,
+            params=params,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    # ── SchemaProvider interface ──────────────────────────────────────────
 
     def get_cubes(self) -> list[dict]:
-        # TODO: run DISCOVER CUBES XMLA command and normalise the response
-        raise NotImplementedError("Real SSAS connection is not yet implemented.")
+        data = self._get("/api/v1/metadata/cubes")
+        return [
+            {
+                "name":        c["name"],
+                "caption":     c.get("caption", c["name"]),
+                "description": c.get("description", ""),
+            }
+            for c in data.get("cubes", [])
+        ]
 
     def get_dimensions(self, cube_name: str) -> list[dict]:
-        # TODO: run DISCOVER DIMENSIONS XMLA command
-        raise NotImplementedError("Real SSAS connection is not yet implemented.")
+        data = self._get(f"/api/v1/metadata/cubes/{cube_name}/dimensions")
+        return [
+            {
+                "name":             d["name"],
+                "unique_name":      d.get("uniqueName", d["name"]),
+                "caption":          d.get("caption", d["name"]),
+                "description":      d.get("description", ""),
+                "type":             d.get("type", ""),
+                "default_hierarchy":d.get("defaultHierarchy", ""),
+            }
+            for d in data.get("dimensions", [])
+        ]
 
     def get_measures(self, cube_name: str) -> list[dict]:
-        # TODO: run DISCOVER MEASURES XMLA command
-        raise NotImplementedError("Real SSAS connection is not yet implemented.")
+        data = self._get(f"/api/v1/metadata/cubes/{cube_name}/measures")
+        return [
+            {
+                "name":           m["name"],
+                "unique_name":    m.get("uniqueName", m["name"]),
+                "caption":        m.get("caption", m["name"]),
+                "description":    m.get("description", ""),
+                "aggregation":    m.get("aggregation", ""),
+                "display_folder": m.get("displayFolder", ""),
+                "measure_group":  m.get("measureGroup", ""),
+                "format_string":  m.get("formatString", ""),
+            }
+            for m in data.get("measures", [])
+        ]
 
     def get_members(self, cube_name: str) -> dict:
-        # TODO: run DISCOVER MEMBERS XMLA command per dimension
-        raise NotImplementedError("Real SSAS connection is not yet implemented.")
+        """
+        Fetch sample members for each dimension using the search endpoint.
+        Uses a single-character query ('a') to retrieve the first batch
+        of members for each dimension. Skips dimensions that return errors.
+        """
+        dimensions = self.get_dimensions(cube_name)
+        members: dict = {}
+
+        for dim in dimensions:
+            dim_unique = dim["unique_name"]
+            try:
+                data = self._get(
+                    f"/api/v1/metadata/cubes/{cube_name}/members/search",
+                    q="a",
+                    dimensionName=dim["name"],
+                    limit=25,
+                )
+                members[dim_unique] = [
+                    {
+                        "caption":     m.get("caption", m.get("name", "")),
+                        "unique_name": m.get("uniqueName", ""),
+                    }
+                    for m in data.get("members", [])
+                ]
+            except Exception as exc:
+                logger.debug(
+                    "Could not fetch members for dimension '%s': %s", dim["name"], exc
+                )
+                members[dim_unique] = []
+
+        return members
 
     def get_hierarchies(self, cube_name: str) -> dict:
-        # TODO: run DISCOVER HIERARCHIES XMLA command
-        raise NotImplementedError("Real SSAS connection is not yet implemented.")
+        """
+        Fetch hierarchy and level info for each dimension.
+        """
+        dimensions = self.get_dimensions(cube_name)
+        hierarchies: dict = {}
+
+        for dim in dimensions:
+            dim_unique = dim["unique_name"]
+            try:
+                data = self._get(
+                    f"/api/v1/metadata/cubes/{cube_name}/dimensions/{dim['name']}/hierarchies"
+                )
+                hierarchies[dim_unique] = data.get("hierarchies", [])
+            except Exception as exc:
+                logger.debug(
+                    "Could not fetch hierarchies for dimension '%s': %s", dim["name"], exc
+                )
+                hierarchies[dim_unique] = []
+
+        return hierarchies
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────
@@ -141,4 +243,5 @@ def get_schema_provider() -> SchemaProvider:
     return SSASSchemaProvider(
         connection_url=settings.ssas_url,
         api_key=settings.ssas_api_key,
+        data_source=getattr(settings, "ssas_data_source", "main"),
     )

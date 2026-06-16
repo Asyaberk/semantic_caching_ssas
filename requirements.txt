@@ -11,6 +11,8 @@ qdrant-client==1.11.3
 # LLM Monitoring
 langfuse==2.53.2
 
+# Relational Database
+psycopg2-binary==2.9.9
 
 # Config & Utils
 python-dotenv==1.0.1

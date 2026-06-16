@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     qdrant_api_key: str = ""
     qdrant_collection_name: str = "ssas_qa_cache"
 
+    # ── PostgreSQL ───────────────────────────────────────────
+    postgres_url: str = "postgresql://ssas:ssas_secret@postgres:5432/ssas_cache"
+
     # ── Langfuse ────────────────────────────────────────────
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
@@ -36,11 +39,14 @@ class Settings(BaseSettings):
     question_language: str = "tr"
 
     # ── SSAS (real connection, only used when USE_MOCK_CUBE=false) ──
-    ssas_url: str = ""
-    ssas_api_key: str = ""
+    ssas_url:         str = ""
+    ssas_api_key:     str = ""
+    ssas_data_source: str = "main"
 
-    # ── Development ─────────────────────────────────────────
+    # ── Feature Toggles ──────────────────────────────────────
     use_mock_cube: bool = True
+    enable_mdx_generation: bool = True    # false = only questions, no MDX
+    enable_semantic_cache: bool = True    # false = /demo/query always calls LLM
 
 
 # Singleton: all modules import this single instance
