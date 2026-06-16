@@ -1,22 +1,30 @@
-# Python virtual environment — never copy into the image
+# ─── Python virtual environment ───────────────────────────────────────────────
 .venv/
 __pycache__/
 *.pyc
 *.pyo
 
-# Environment file — injected at runtime via docker-compose env_file
+# ─── Environment file (injected at runtime via docker-compose env_file) ───────
 .env
 
-# Git
+# ─── Git ──────────────────────────────────────────────────────────────────────
 .git/
 .gitignore
 
-# IDE
+# ─── IDE ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 
-# OS
+# ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 
-# Logs
+# ─── Logs & local data ────────────────────────────────────────────────────────
 *.log
+logs/
+postgres_data/
+qdrant_storage/
+
+# ─── Test artifacts ───────────────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage

@@ -1,4 +1,4 @@
-# Python
+# ─── Python ───────────────────────────────────────────────────────────────────
 .venv/
 __pycache__/
 *.pyc
@@ -8,17 +8,30 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+*.so
 
-# Environment variables (contains API keys, never commit this)
+# ─── Environment (contains API keys — never commit) ───────────────────────────
 .env
 
-# IDE
+# ─── IDE ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# OS
+# ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Logs
+# ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
+logs/
+
+# ─── Docker volumes / local data ──────────────────────────────────────────────
+postgres_data/
+qdrant_storage/
+
+# ─── Test artifacts ───────────────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
