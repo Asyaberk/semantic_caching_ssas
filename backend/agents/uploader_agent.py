@@ -93,13 +93,17 @@ class QdrantUploaderAgent:
             logger.warning("Could not fetch collection count: %s", exc)
             return 0
 
-    def upload(self, pairs: list[QAPair], batch_size: int = 10) -> int:
+    def upload(self, pairs: list[QAPair], batch_size: int = 10, force: bool = False) -> int:
         """
         Embed questions and upsert all QAPairs into Qdrant.
 
         Args:
             pairs:      List of QAPair objects to upload.
             batch_size: Number of points sent to Qdrant per API call.
+            force:      If True, bypass the near-duplicate check.
+                        Use this for write-through patched pairs that are
+                        intentionally similar to existing records but carry
+                        different entity values (e.g. a year-patched question).
 
         Returns:
             Number of records successfully uploaded.
@@ -120,7 +124,7 @@ class QdrantUploaderAgent:
                 points: list[PointStruct] = []
                 for pair in batch:
                     vector = self._embed(pair.question)
-                    if self._is_near_duplicate(vector):
+                    if not force and self._is_near_duplicate(vector):
                         logger.info(
                             "Skipping near-duplicate: '%s'", pair.question[:60]
                         )
@@ -185,6 +189,9 @@ class QdrantUploaderAgent:
             "dimensions_used": pair.dimensions_used,
             "measures_used":   pair.measures_used,
             "complexity":      pair.complexity.value if pair.complexity else "medium",
+            # Template fields — stored in payload so resolver reads without DB lookup
+            "mdx_template":    pair.mdx_template or None,
+            "entity_map":      pair.entity_map   or None,
         }
         return PointStruct(id=point_id, vector=vector, payload=payload)
 

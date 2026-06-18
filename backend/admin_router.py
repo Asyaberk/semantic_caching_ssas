@@ -52,24 +52,25 @@ class UpdateMdxRequest(BaseModel):
 
 @router.get("/cache", response_model=CacheListResponse)
 async def list_cache(
-    cube_name:  str | None = Query(None, description="Filter by cube name"),
-    feedback:   str | None = Query(None, description="Filter by feedback: positive | negative"),
-    page:       int        = Query(1,    ge=1),
-    page_size:  int        = Query(50,   ge=1, le=200),
+    cube_name:    str | None  = Query(None),
+    feedback:     str | None  = Query(None, description="positive | negative"),
+    search:       str | None  = Query(None, description="keyword in question text"),
+    mdx_search:   str | None  = Query(None, description="keyword in MDX content (e.g. 2024, Turkey)"),
+    has_template: bool | None = Query(None, description="true = only pairs with template"),
+    page:         int         = Query(1,  ge=1),
+    page_size:    int         = Query(50, ge=1, le=200),
 ):
     """
     Return a paginated list of cached Q&A pairs for the admin UI.
-    Optionally filter by cube name or feedback status.
+    Filters: cube, feedback, question keyword, MDX content keyword, template presence.
     """
     rows, total = get_all_pairs(
-        cube_name=cube_name,
-        feedback=feedback,
-        page=page,
-        page_size=page_size,
+        cube_name=cube_name, feedback=feedback,
+        search=search, mdx_search=mdx_search,
+        has_template=has_template,
+        page=page, page_size=page_size,
     )
-    return CacheListResponse(
-        total=total, page=page, page_size=page_size, items=rows
-    )
+    return CacheListResponse(total=total, page=page, page_size=page_size, items=rows)
 
 
 @router.put("/cache/{pair_id}")

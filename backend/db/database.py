@@ -77,6 +77,8 @@ def init_db() -> None:
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS feedback      VARCHAR(20);
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS user_question TEXT;
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS entities      JSONB;
+    ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS mdx_template  TEXT;
+    ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS entity_map    JSONB;
 
     -- Query log: every incoming query is recorded here
     CREATE TABLE IF NOT EXISTS query_log (
@@ -129,6 +131,8 @@ def save_pairs(pairs: list[QAPair]) -> int:
             json.dumps(p.dimensions_used or []),
             json.dumps(p.measures_used  or []),
             p.langfuse_trace_id,
+            p.mdx_template,
+            json.dumps(p.entity_map) if p.entity_map else None,
         )
         for p in pairs
     ]
@@ -136,8 +140,9 @@ def save_pairs(pairs: list[QAPair]) -> int:
     sql = """
         INSERT INTO qa_pairs
             (id, cube_name, question, mdx, complexity,
-             dimensions_used, measures_used, langfuse_trace_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+             dimensions_used, measures_used, langfuse_trace_id,
+             mdx_template, entity_map)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO NOTHING
     """
 
@@ -239,19 +244,29 @@ def get_pair_by_id(pair_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+
 def get_all_pairs(
-    cube_name:  str | None = None,
-    feedback:   str | None = None,
-    page:       int = 1,
-    page_size:  int = 50,
+    cube_name:    str | None = None,
+    feedback:     str | None = None,
+    search:       str | None = None,   # keyword in question text
+    mdx_search:   str | None = None,   # keyword in MDX content only
+    has_template: bool | None = None,
+    page:         int = 1,
+    page_size:    int = 50,
 ) -> tuple[list[dict], int]:
     """
     Return a paginated list of QA pairs for the admin cache management UI.
 
+    Filters:
+      cube_name    — exact cube name match
+      feedback     — 'positive' | 'negative'
+      search       — case-insensitive keyword in question text
+      mdx_search   — case-insensitive keyword in MDX content (year, country, etc.)
+      has_template — True: only rows with mdx_template set
+
     Returns (rows, total_count).
-    Each row is a plain dict with all qa_pairs columns.
     """
-    conditions = []
+    conditions: list[str] = []
     params: list = []
 
     if cube_name:
@@ -260,8 +275,18 @@ def get_all_pairs(
     if feedback:
         conditions.append("feedback = %s")
         params.append(feedback)
+    if search:
+        conditions.append("question ILIKE %s")
+        params.append(f"%{search}%")
+    if mdx_search:
+        conditions.append("mdx ILIKE %s")
+        params.append(f"%{mdx_search}%")
+    if has_template is True:
+        conditions.append("mdx_template IS NOT NULL")
+    elif has_template is False:
+        conditions.append("mdx_template IS NULL")
 
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    where  = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     offset = (page - 1) * page_size
 
     with get_connection() as conn:
@@ -272,7 +297,8 @@ def get_all_pairs(
             cur.execute(
                 f"""
                 SELECT id, cube_name, question, mdx, complexity,
-                       feedback, user_question, created_at
+                       feedback, user_question, created_at,
+                       (mdx_template IS NOT NULL) AS has_template
                 FROM   qa_pairs
                 {where}
                 ORDER  BY created_at DESC

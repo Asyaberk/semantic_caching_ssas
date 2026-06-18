@@ -3,133 +3,87 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SSAS Cache Seeder — Admin</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <title>SSAS Cache Admin</title>
   <style>
+    /* ── Reset & tokens ─────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:        #f4f6fb;
+      --bg:        #f8f9fb;
       --surface:   #ffffff;
-      --border:    #e2e8f0;
+      --border:    #e5e7eb;
+      --text:      #111827;
+      --muted:     #6b7280;
       --accent:    #4361ee;
-      --accent-lt: #eef1ff;
+      --accent-lt: #eef0fd;
       --green:     #16a34a;
       --green-lt:  #dcfce7;
-      --red:       #dc2626;
-      --red-lt:    #fee2e2;
       --amber:     #d97706;
       --amber-lt:  #fef3c7;
-      --text:      #0f172a;
-      --muted:     #64748b;
-      --radius:    12px;
-      --shadow:    0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.06);
+      --red:       #dc2626;
+      --red-lt:    #fee2e2;
+      --blue:      #1d4ed8;
+      --blue-lt:   #dbeafe;
+      --sidebar-w: 220px;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
     }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
 
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-    }
-
-    /* ── Layout ── */
+    /* ── Layout ─────────────────────────────────────────────────── */
     .layout { display: flex; min-height: 100vh; }
-
     .sidebar {
-      width: 220px;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      padding: 28px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex-shrink: 0;
+      width: var(--sidebar-w); min-height: 100vh; background: var(--surface);
+      border-right: 1px solid var(--border); padding: 24px 12px;
+      display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
     }
-
-    .sidebar .brand {
-      font-weight: 700;
-      font-size: 1rem;
-      color: var(--accent);
-      padding: 0 8px 20px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 12px;
+    .brand {
+      font-size: .82rem; font-weight: 700; color: var(--accent);
+      letter-spacing: .5px; padding: 4px 12px 16px; text-transform: uppercase;
     }
-    .sidebar .brand span { display: block; font-size: 0.7rem; font-weight: 500; color: var(--muted); margin-top: 2px; }
-
+    .brand span { display: block; color: var(--muted); font-weight: 400; text-transform: none; font-size: .75rem; }
     .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      font-weight: 500;
-      color: var(--muted);
-      cursor: pointer;
-      border: none;
-      background: none;
-      width: 100%;
-      text-align: left;
-      transition: all 0.15s;
+      width: 100%; text-align: left; padding: 9px 14px; border-radius: 8px;
+      background: none; border: none; cursor: pointer; font-size: .85rem;
+      color: var(--muted); font-weight: 500; transition: background .15s, color .15s;
     }
-    .nav-item:hover { background: var(--bg); color: var(--text); }
-    .nav-item.active { background: var(--accent-lt); color: var(--accent); }
+    .nav-item:hover  { background: var(--bg); color: var(--text); }
+    .nav-item.active { background: var(--accent-lt); color: var(--accent); font-weight: 600; }
+    .nav-divider { height: 1px; background: var(--border); margin: 8px 0; }
+    .main { flex: 1; padding: 32px; overflow-y: auto; min-width: 0; }
 
-    .main { flex: 1; padding: 36px 40px; overflow-y: auto; }
+    /* ── Page sections ───────────────────────────────────────────── */
+    .tab-page { display: none; }
+    .tab-page.active { display: block; }
+    .page-header { margin-bottom: 24px; }
+    .page-header h1 { font-size: 1.3rem; font-weight: 700; }
+    .page-header p  { font-size: .85rem; color: var(--muted); margin-top: 4px; }
 
-    .page-header { margin-bottom: 28px; }
-    .page-header h1 { font-size: 1.5rem; font-weight: 700; }
-    .page-header p  { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
-
-    /* ── Cards ── */
+    /* ── Cards ───────────────────────────────────────────────────── */
     .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 24px;
-      margin-bottom: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; margin-bottom: 20px;
     }
+    .card-title { font-size: .82rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .6px; color: var(--muted); margin-bottom: 14px; }
 
-    .card-title {
-      font-size: 0.8rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--muted);
-      margin-bottom: 14px;
-    }
-
-    /* ── Stats row ── */
-    .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+    /* ── Stats row ───────────────────────────────────────────────── */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
     .stat-card {
-      flex: 1;
-      min-width: 140px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px 18px;
     }
-    .stat-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-value { font-size: 1.75rem; font-weight: 700; margin-top: 4px; color: var(--accent); }
+    .stat-label { font-size: .72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+    .stat-value { font-size: 1.6rem; font-weight: 700; margin-top: 6px; color: var(--text); }
 
-    /* ── Progress bar ── */
+    /* ── Progress ────────────────────────────────────────────────── */
     .progress-track { height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; margin-top: 10px; }
     .progress-fill  { height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.5s ease; }
 
-    /* ── Pipeline buttons ── */
+    /* ── Buttons ─────────────────────────────────────────────────── */
     .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
     .btn {
-      padding: 9px 22px;
-      border-radius: 8px;
-      font-size: 0.88rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      transition: all 0.15s;
+      padding: 8px 18px; border-radius: 8px; border: none; font-size: .85rem;
+      font-weight: 600; cursor: pointer; transition: background .15s; font-family: inherit;
     }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: #3251d4; }
@@ -137,178 +91,138 @@
     .btn-danger:hover { background: #fecaca; }
     .btn-ghost   { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
     .btn-ghost:hover { background: var(--border); }
+    .btn-sm      { padding: 4px 12px; font-size: .75rem; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* ── Status badge ── */
+    /* ── Status badges ───────────────────────────────────────────── */
     .status-badge {
-      display: inline-block;
-      padding: 3px 12px;
-      border-radius: 99px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.5px;
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
     }
-    .status-running   { background: var(--accent-lt); color: var(--accent); }
-    .status-completed { background: var(--green-lt);  color: var(--green); }
-    .status-stopped   { background: var(--amber-lt);  color: var(--amber); }
-    .status-error     { background: var(--red-lt);    color: var(--red); }
-    .status-idle      { background: var(--bg);        color: var(--muted); border: 1px solid var(--border); }
+    .status-idle    { background: var(--bg);       color: var(--muted); }
+    .status-running { background: var(--blue-lt);   color: var(--blue); }
+    .status-done    { background: var(--green-lt);  color: var(--green); }
+    .status-error   { background: var(--red-lt);    color: var(--red); }
 
-    /* ── Log box ── */
+    .action-badge {
+      display: inline-block; padding: 2px 9px; border-radius: 99px;
+      font-size: .7rem; font-weight: 700; text-transform: uppercase;
+    }
+    .action-hit      { background: var(--green-lt); color: var(--green); }
+    .action-template { background: var(--green-lt); color: var(--green); }
+    .action-patched  { background: var(--blue-lt);  color: var(--blue); }
+    .action-miss     { background: var(--amber-lt); color: var(--amber); }
+    .action-failed   { background: var(--red-lt);   color: var(--red); }
+
+    .fb-badge {
+      display: inline-block; padding: 2px 9px; border-radius: 99px;
+      font-size: .7rem; font-weight: 600;
+    }
+    .fb-positive { background: var(--green-lt); color: var(--green); }
+    .fb-negative { background: var(--red-lt);   color: var(--red); }
+
+    /* ── Log box ─────────────────────────────────────────────────── */
     .log-box {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.78rem;
-      line-height: 1.7;
-      background: #f8fafc;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 14px;
-      max-height: 200px;
-      overflow-y: auto;
-      color: var(--muted);
+      background: #f1f5f9; border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 16px; font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: .78rem; line-height: 1.7; color: var(--muted);
+      max-height: 260px; overflow-y: auto; white-space: pre-wrap;
     }
 
-    /* ── Tab pages ── */
-    .tab-page { display: none; }
-    .tab-page.active { display: block; }
-
-    /* ── Cache table ── */
-    .filter-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; }
-    .filter-row select,
-    .filter-row input {
-      padding: 8px 12px;
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      font-size: 0.85rem;
-      font-family: 'Inter', sans-serif;
-      outline: none;
-      background: #fff;
+    /* ── Filter row ──────────────────────────────────────────────── */
+    .filter-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+    .filter-label { font-size: .72rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    .filter-row select, .filter-row input {
+      padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px;
+      font-size: .84rem; background: var(--surface); font-family: inherit; outline: none;
     }
-    .filter-row select:focus,
-    .filter-row input:focus { border-color: var(--accent); }
+    .filter-row select:focus, .filter-row input:focus { border-color: var(--accent); }
 
+    /* ── Table ───────────────────────────────────────────────────── */
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    th { text-align: left; padding: 10px 12px; font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid var(--border); white-space: nowrap; }
-    td { padding: 12px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    tr:hover td { background: var(--bg); }
-    tr.flagged td { background: #fff7f7; }
-
-    .feedback-badge {
-      display: inline-block;
-      padding: 2px 10px;
-      border-radius: 99px;
-      font-size: 0.72rem;
-      font-weight: 600;
+    table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+    thead th {
+      text-align: left; padding: 10px 14px; font-size: .72rem; font-weight: 700;
+      color: var(--muted); text-transform: uppercase; letter-spacing: .5px;
+      border-bottom: 1px solid var(--border); background: var(--bg);
     }
-    .feedback-badge.positive { background: var(--green-lt); color: var(--green); }
-    .feedback-badge.negative { background: var(--red-lt);   color: var(--red); }
-    .feedback-badge.none     { background: var(--bg);       color: var(--muted); border: 1px solid var(--border); }
+    tbody td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: var(--bg); }
+    .row-flagged { background: #fff5f5 !important; }
+    .row-flagged:hover { background: #fee2e2 !important; }
+    .empty-state { color: var(--muted); font-style: italic; padding: 24px; text-align: center; }
 
-    .q-cell { max-width: 260px; }
-    .q-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; display: block; }
-    .mdx-preview { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; display: block; }
-
-    .action-btn {
-      padding: 4px 12px;
-      border-radius: 6px;
-      font-size: 0.78rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      transition: all 0.15s;
+    /* ── Pagination ──────────────────────────────────────────────── */
+    .pagination { display: flex; align-items: center; gap: 12px; margin-top: 14px; justify-content: flex-end; }
+    .page-btn {
+      padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); cursor: pointer; font-size: .82rem; font-family: inherit;
     }
-    .action-btn:hover { background: var(--bg); }
-    .action-btn.del { color: var(--red); border-color: #fca5a5; }
-    .action-btn.del:hover { background: var(--red-lt); }
-
-    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
-    .page-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 0.82rem; }
     .page-btn:hover { background: var(--bg); }
     .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* ── Modal ── */
+    /* ── Modal ───────────────────────────────────────────────────── */
     .modal-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.25);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100;
-      animation: fadeIn 0.15s;
+      position: fixed; inset: 0; background: rgba(0,0,0,.35);
+      display: flex; align-items: center; justify-content: center; z-index: 100;
     }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     .modal-overlay.hidden { display: none; }
-
     .modal {
-      background: var(--surface);
-      border-radius: var(--radius);
-      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-      padding: 28px;
-      width: 100%;
-      max-width: 560px;
-      max-height: 80vh;
-      overflow-y: auto;
+      background: var(--surface); border-radius: 14px; padding: 28px;
+      width: 600px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,.15);
     }
     .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
-    .modal .modal-sub { font-size: 0.8rem; color: var(--muted); margin-bottom: 16px; }
+    .modal .modal-sub { font-size: .8rem; color: var(--muted); margin-bottom: 16px; }
     .modal textarea {
-      width: 100%;
-      padding: 12px;
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
-      line-height: 1.6;
-      resize: vertical;
-      min-height: 160px;
-      outline: none;
+      width: 100%; height: 180px; font-family: 'SF Mono', monospace; font-size: .8rem;
+      border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+      resize: vertical; outline: none; background: var(--bg);
     }
     .modal textarea:focus { border-color: var(--accent); }
     .modal-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
-
-    .empty-state { text-align: center; padding: 48px 0; color: var(--muted); font-size: 0.9rem; }
   </style>
 </head>
 <body>
-
 <div class="layout">
+
   <!-- Sidebar -->
   <nav class="sidebar">
-    <div class="brand">⚡ Cache Seeder <span>Admin Panel</span></div>
-    <button class="nav-item active" id="nav-pipeline" onclick="switchTab('pipeline')">📊 Pipeline</button>
-    <button class="nav-item" id="nav-cache" onclick="switchTab('cache')">🗂 Cache Management</button>
-    <button class="nav-item" id="nav-log" onclick="switchTab('log')">📋 Query Log</button>
-    <a href="/demo" style="text-decoration:none; margin-top:auto">
-      <button class="nav-item">🔍 Demo UI</button>
+    <div class="brand">Cache Admin<span>SSAS Semantic Cache</span></div>
+    <button class="nav-item active" id="nav-pipeline" onclick="switchTab('pipeline')">Pipeline</button>
+    <button class="nav-item" id="nav-cache"    onclick="switchTab('cache')">Cache</button>
+    <button class="nav-item" id="nav-history"  onclick="switchTab('history')">Query History</button>
+    <div class="nav-divider"></div>
+    <a href="/demo" style="text-decoration:none">
+      <button class="nav-item">Demo</button>
     </a>
   </nav>
 
-  <!-- Main content -->
+  <!-- Main -->
   <main class="main">
 
     <!-- ══ Pipeline Tab ══ -->
     <div class="tab-page active" id="tab-pipeline">
       <div class="page-header">
-        <h1>Pipeline Status</h1>
-        <p>Monitor and control the cache seeding pipeline.</p>
+        <h1>Pipeline</h1>
+        <p>Control the cache seeding pipeline. The pipeline reads each SSAS cube schema, generates question / MDX pairs with an LLM, and loads them into Qdrant.</p>
       </div>
 
-      <!-- Stats -->
       <div class="stats-row">
         <div class="stat-card">
           <div class="stat-label">Status</div>
-          <div style="margin-top:8px" id="statusBadge"><span class="status-badge status-idle">idle</span></div>
+          <div style="margin-top:8px" id="statusBadge"><span class="status-badge status-idle">Idle</span></div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Total Uploaded</div>
           <div class="stat-value" id="uploaded">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Per-cube Target</div>
+          <div class="stat-label">Target / Cube</div>
           <div class="stat-value" id="cubeTarget">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Cube Progress</div>
+          <div class="stat-label">Current Cube</div>
           <div class="stat-value" id="cubeUploaded">—</div>
         </div>
         <div class="stat-card">
@@ -317,38 +231,44 @@
         </div>
       </div>
 
-      <!-- Progress -->
       <div class="card">
-        <div class="card-title">Current Cube Progress</div>
+        <div class="card-title">Progress</div>
         <div id="cubeLabel" style="font-size:.85rem;color:var(--muted);margin-bottom:8px">—</div>
         <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
         <div style="font-size:.78rem;color:var(--muted);margin-top:6px" id="progressLabel">0 / 0 per cube</div>
-
         <div class="btn-row">
-          <button class="btn btn-primary" id="startBtn" onclick="startPipeline()">&#9654; Start</button>
-          <button class="btn btn-danger"  id="stopBtn"  onclick="stopPipeline()" disabled>&#9632; Stop</button>
+          <button class="btn btn-primary" id="startBtn" onclick="startPipeline()">Start</button>
+          <button class="btn btn-danger"  id="stopBtn"  onclick="stopPipeline()" disabled>Stop</button>
         </div>
       </div>
 
-      <!-- Log stream -->
       <div class="card">
         <div class="card-title">Live Log</div>
         <div class="log-box" id="logBox">Waiting for pipeline…</div>
       </div>
     </div>
 
-    <!-- ══ Cache Management Tab ══ -->
+    <!-- ══ Cache Tab ══ -->
     <div class="tab-page" id="tab-cache">
       <div class="page-header">
-        <h1>Cache Management</h1>
-        <p>Inspect, edit and delete cached Q&amp;A pairs. Flagged rows are highlighted in red.</p>
+        <h1>Cache</h1>
+        <p>All pre-generated Q&amp;A pairs stored in PostgreSQL and Qdrant. This is what the semantic search draws from. Edit MDX or delete pairs here.</p>
       </div>
 
-      <!-- Filters -->
       <div class="card">
         <div class="filter-row">
           <div>
-            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Cube</div>
+            <div class="filter-label">Question</div>
+            <input id="filterSearch" type="text" placeholder="search in question text"
+              style="width:200px" oninput="debounceLoad()" />
+          </div>
+          <div>
+            <div class="filter-label">MDX keyword</div>
+            <input id="filterMdx" type="text" placeholder="e.g. 2024 or Turkey"
+              style="width:160px" oninput="debounceLoad()" />
+          </div>
+          <div>
+            <div class="filter-label">Cube</div>
             <select id="filterCube" onchange="loadCache(1)">
               <option value="">All cubes</option>
               <option>cubeAccruement</option>
@@ -363,14 +283,20 @@
             </select>
           </div>
           <div>
-            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Feedback</div>
+            <div class="filter-label">Feedback</div>
             <select id="filterFeedback" onchange="loadCache(1)">
               <option value="">All</option>
-              <option value="negative">⚑ Flagged</option>
-              <option value="positive">✓ Verified</option>
+              <option value="negative">Flagged</option>
+              <option value="positive">Verified</option>
             </select>
           </div>
-          <button class="btn btn-ghost" onclick="loadCache(1)" style="height:38px;align-self:flex-end">↺ Refresh</button>
+          <div style="display:flex;align-items:flex-end;gap:6px">
+            <label style="font-size:.82rem;cursor:pointer;display:flex;align-items:center;gap:5px;padding-bottom:2px">
+              <input type="checkbox" id="filterTemplate" onchange="loadCache(1)" />
+              Template only
+            </label>
+          </div>
+          <button class="btn btn-ghost" onclick="loadCache(1)" style="height:38px;align-self:flex-end">Refresh</button>
           <span id="cacheCount" style="align-self:flex-end;font-size:.82rem;color:var(--muted)"></span>
         </div>
 
@@ -383,54 +309,53 @@
                 <th>Feedback</th>
                 <th>MDX Preview</th>
                 <th>Date</th>
-                <th>Actions</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="cacheTableBody">
-              <tr><td colspan="6" class="empty-state">Loading…</td></tr>
+              <tr><td colspan="7" class="empty-state">Loading…</td></tr>
             </tbody>
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="pagination">
-          <button class="page-btn" id="prevPage" onclick="changePage(-1)" disabled>← Prev</button>
+          <button class="page-btn" id="prevPage" onclick="changePage(-1)" disabled>Prev</button>
           <span id="pageInfo">Page 1</span>
-          <button class="page-btn" id="nextPage" onclick="changePage(1)">Next →</button>
+          <button class="page-btn" id="nextPage" onclick="changePage(1)">Next</button>
         </div>
       </div>
     </div>
 
-    <!-- ══ Query Log Tab ══ -->
-    <div class="tab-page" id="tab-log">
+    <!-- ══ Query History Tab ══ -->
+    <div class="tab-page" id="tab-history">
       <div class="page-header">
-        <h1>Query Log</h1>
-        <p>Every incoming query — hits, mismatches, misses, and failures. One-click cache for missed queries.</p>
+        <h1>Query History</h1>
+        <p>Every question users asked — and how the system answered it. Hit means the cache answered directly. Patched means the MDX was adapted (year or entity changed). Miss means the LLM generated a fresh answer.</p>
       </div>
 
       <div class="card">
-        <!-- Filters -->
-        <div class="filter-row" style="margin-bottom:16px">
+        <div class="filter-row">
           <div>
-            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Action</div>
+            <div class="filter-label">Outcome</div>
             <select id="logFilterAction" onchange="loadQueryLog(1)">
               <option value="">All</option>
-              <option value="hit">✓ Hit</option>
-              <option value="patched">⚡ Patched</option>
-              <option value="miss">◯ Miss</option>
-              <option value="failed">✗ Failed</option>
+              <option value="hit">Hit</option>
+              <option value="template">Template Hit</option>
+              <option value="patched">Patched</option>
+              <option value="miss">Miss</option>
+              <option value="failed">Failed</option>
             </select>
           </div>
           <div>
-            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Mismatch</div>
+            <div class="filter-label">Mismatch reason</div>
             <select id="logFilterMismatch" onchange="loadQueryLog(1)">
               <option value="">All</option>
-              <option value="year">📅 Year</option>
-              <option value="entity">🔄 Entity</option>
-              <option value="major">⚠ Major</option>
+              <option value="year">Year</option>
+              <option value="entity">Entity</option>
+              <option value="major">Major</option>
             </select>
           </div>
-          <button class="btn btn-ghost" onclick="loadQueryLog(1)" style="height:38px;align-self:flex-end">↺ Refresh</button>
+          <button class="btn btn-ghost" onclick="loadQueryLog(1)" style="height:38px;align-self:flex-end">Refresh</button>
           <span id="logCount" style="align-self:flex-end;font-size:.82rem;color:var(--muted)"></span>
         </div>
 
@@ -439,12 +364,12 @@
             <thead>
               <tr>
                 <th>Time</th>
-                <th>Question</th>
-                <th>Action</th>
+                <th>User Question</th>
+                <th>Outcome</th>
                 <th>Mismatch</th>
                 <th>Cube</th>
                 <th>Similarity</th>
-                <th>Matched</th>
+                <th>Matched Cache Entry</th>
                 <th></th>
               </tr>
             </thead>
@@ -455,9 +380,9 @@
         </div>
 
         <div class="pagination">
-          <button class="page-btn" id="logPrevPage" onclick="changeLogPage(-1)" disabled>← Prev</button>
+          <button class="page-btn" id="logPrevPage" onclick="changeLogPage(-1)" disabled>Prev</button>
           <span id="logPageInfo">Page 1</span>
-          <button class="page-btn" id="logNextPage" onclick="changeLogPage(1)">Next →</button>
+          <button class="page-btn" id="logNextPage" onclick="changeLogPage(1)">Next</button>
         </div>
       </div>
     </div>
@@ -473,20 +398,20 @@
     <textarea id="editMdxArea" spellcheck="false"></textarea>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveMdx()">Save changes</button>
+      <button class="btn btn-primary" onclick="saveMdx()">Save</button>
     </div>
   </div>
 </div>
 
 <script>
-  // ── Tab switching ─────────────────────────────────────────────────────────
+  // ── Tab switching ──────────────────────────────────────────────────────────
   function switchTab(tab) {
     document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.getElementById('tab-' + tab).classList.add('active');
-    document.getElementById('nav-' + tab).classList.add('active');
-    if (tab === 'cache') loadCache(1);
-    if (tab === 'log')   loadQueryLog(1);
+    document.getElementById('tab-'  + tab).classList.add('active');
+    document.getElementById('nav-'  + tab).classList.add('active');
+    if (tab === 'cache')   loadCache(1);
+    if (tab === 'history') loadQueryLog(1);
   }
 
   // ── Pipeline ──────────────────────────────────────────────────────────────
@@ -506,128 +431,114 @@
       const r = await fetch('/pipeline/status');
       const d = await r.json();
       updatePipelineUI(d);
-      if (d.status === 'running') {
-        pollTimer = setTimeout(pollStatus, 1500);
-      }
+      if (pollTimer) clearTimeout(pollTimer);
+      if (d.is_running) pollTimer = setTimeout(pollStatus, 2000);
     } catch (e) {
-      setTimeout(pollStatus, 3000);
+      console.error('pollStatus error', e);
     }
   }
 
   function updatePipelineUI(d) {
-    const statusMap = {
-      running:   'status-running',
-      completed: 'status-completed',
-      stopped:   'status-stopped',
-      error:     'status-error',
-      idle:      'status-idle',
-    };
-    const cls = statusMap[d.status] || 'status-idle';
+    const running = d.is_running;
+    document.getElementById('startBtn').disabled = running;
+    document.getElementById('stopBtn').disabled  = !running;
+
+    const st = running ? 'running' : (d.error ? 'error' : (d.total_uploaded > 0 ? 'done' : 'idle'));
+    const labels = { running: 'Running', idle: 'Idle', done: 'Done', error: 'Error' };
     document.getElementById('statusBadge').innerHTML =
-      `<span class="status-badge ${cls}">${d.status}</span>`;
+      `<span class="status-badge status-${st}">${labels[st] || st}</span>`;
 
-    document.getElementById('uploaded').textContent     = d.uploaded_count      ?? '—';
-    document.getElementById('cubeTarget').textContent   = d.cube_target         ?? '—';
-    document.getElementById('cubeUploaded').textContent = (d.cube_uploaded_count ?? 0) + ' / ' + (d.cube_target ?? '?');
-    document.getElementById('mdxGen').textContent       = d.mdx_generated       ?? '—';
+    document.getElementById('uploaded').textContent   = d.total_uploaded ?? '—';
+    document.getElementById('cubeTarget').textContent = d.cube_target    ?? '—';
+    document.getElementById('cubeUploaded').textContent = d.cube_uploaded_count ?? '—';
+    document.getElementById('mdxGen').textContent     = d.mdx_generated  ?? '—';
 
-    // Per-cube progress bar (shows current cube quota)
-    const pct = d.cube_target
-      ? Math.min(100, ((d.cube_uploaded_count ?? 0) / d.cube_target) * 100)
-      : 0;
-    document.getElementById('progressFill').style.width = pct.toFixed(1) + '%';
+    const pct = d.cube_target ? Math.min(100, (d.cube_uploaded_count / d.cube_target) * 100) : 0;
+    document.getElementById('progressFill').style.width  = pct.toFixed(1) + '%';
+    document.getElementById('cubeLabel').textContent     = d.current_cube ?? '—';
     document.getElementById('progressLabel').textContent =
       `${d.cube_uploaded_count ?? 0} / ${d.cube_target ?? 0} per cube`;
-    document.getElementById('cubeLabel').textContent =
-      d.current_cube
-        ? `Cube: ${d.current_cube}  (${Object.keys(d.cube_progress || {}).length} / ${d.total_cubes} cubes done)`
-        : '—';
 
-    document.getElementById('startBtn').disabled = d.status === 'running';
-    document.getElementById('stopBtn').disabled  = d.status !== 'running';
-
-    // Log entry
-    const prog = d.cube_progress
-      ? Object.entries(d.cube_progress).map(([k,v]) => `${k.replace('cube','')}:${v}`).join(' ')
-      : '';
-    const line = `[${new Date().toLocaleTimeString()}] ${d.status.toUpperCase()} | ` +
-      `cube: ${d.current_cube ?? '—'} ${d.cube_uploaded_count ?? 0}/${d.cube_target ?? 0}` +
-      ` | total: ${d.uploaded_count} | ${prog}` +
-      (d.last_error ? ` | ERR: ${d.last_error}` : '');
-    logLines.push(line);
-    if (logLines.length > 80) logLines.shift();
-    const box = document.getElementById('logBox');
-    box.textContent = logLines.join('\n');
-    box.scrollTop   = box.scrollHeight;
+    if (d.log_lines && d.log_lines.length) {
+      logLines = [...logLines, ...d.log_lines].slice(-200);
+      const box = document.getElementById('logBox');
+      box.textContent = logLines.join('\n');
+      box.scrollTop   = box.scrollHeight;
+    }
   }
 
-  // Auto-poll on load
   pollStatus();
   setInterval(pollStatus, 5000);
 
-  // ── Cache management ──────────────────────────────────────────────────────
-  let cachePage     = 1;
+  // ── Cache Management ───────────────────────────────────────────────────────
+  let cachePage = 1;
   let cacheTotalPgs = 1;
-  let editingId     = '';
+  let editingId = '';
+  window.cacheData = {};
+
+  let _debounceTimer = null;
+  function debounceLoad() {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(() => loadCache(1), 350);
+  }
 
   async function loadCache(page = 1) {
     cachePage = page;
-    const cube     = document.getElementById('filterCube').value;
-    const feedback = document.getElementById('filterFeedback').value;
-
-    let url = `/admin/cache?page=${page}&page_size=20`;
-    if (cube)     url += `&cube_name=${encodeURIComponent(cube)}`;
-    if (feedback) url += `&feedback=${encodeURIComponent(feedback)}`;
+    const cube      = document.getElementById('filterCube').value;
+    const feedback  = document.getElementById('filterFeedback').value;
+    const search    = document.getElementById('filterSearch').value.trim();
+    const mdxKw     = document.getElementById('filterMdx').value.trim();
+    const tmplOnly  = document.getElementById('filterTemplate').checked;
+    const params    = new URLSearchParams({ page, page_size: 25 });
+    if (cube)      params.set('cube_name', cube);
+    if (feedback)  params.set('feedback', feedback);
+    if (search)    params.set('search', search);        // searches question text
+    if (mdxKw)     params.set('mdx_search', mdxKw);    // searches MDX content only
+    if (tmplOnly)  params.set('has_template', 'true');
 
     const tbody = document.getElementById('cacheTableBody');
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Loading…</td></tr>';
 
     try {
-      const res  = await fetch(url);
+      const res  = await fetch('/admin/cache?' + params);
       const data = await res.json();
-      cacheTotalPgs = Math.max(1, Math.ceil(data.total / 20));
+      cacheTotalPgs = Math.max(1, Math.ceil(data.total / 25));
 
-      window.cacheData = window.cacheData || {};
-      data.items.forEach(row => { window.cacheData[row.id] = row; });
-
-      document.getElementById('cacheCount').textContent =
-        `${data.total} record${data.total !== 1 ? 's' : ''}`;
-      document.getElementById('pageInfo').textContent =
-        `Page ${cachePage} of ${cacheTotalPgs}`;
+      document.getElementById('cacheCount').textContent = `${data.total} pairs`;
+      document.getElementById('pageInfo').textContent   = `Page ${cachePage} / ${cacheTotalPgs}`;
       document.getElementById('prevPage').disabled = cachePage <= 1;
       document.getElementById('nextPage').disabled = cachePage >= cacheTotalPgs;
 
       if (!data.items.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No records found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No pairs found.</td></tr>';
         return;
       }
 
+      window.cacheData = {};
       tbody.innerHTML = data.items.map(row => {
-        const fb    = row.feedback || 'none';
-        const fbTxt = fb === 'positive' ? '✓ Good' : fb === 'negative' ? '⚑ Flagged' : 'None';
-        const date  = row.created_at ? new Date(row.created_at).toLocaleDateString() : '—';
-        return `
-          <tr class="${fb === 'negative' ? 'flagged' : ''}">
-            <td class="q-cell">
-              <span class="q-text" title="${escHtml(row.question)}">${escHtml(row.question)}</span>
-              ${fb === 'negative' && row.user_question && row.user_question !== row.question
-                ? `<span style="display:block;font-size:.72rem;color:var(--red);margin-top:3px" title="User actually asked this">
-                    &#x2514; "${escHtml(row.user_question)}"
-                   </span>`
-                : ''}
-            </td>
-            <td style="white-space:nowrap;font-size:.8rem">${escHtml(row.cube_name)}</td>
-            <td><span class="feedback-badge ${fb}">${fbTxt}</span></td>
-            <td><span class="mdx-preview" title="${escHtml(row.mdx || '')}">${escHtml((row.mdx || '').slice(0, 60))}…</span></td>
-            <td style="white-space:nowrap;font-size:.8rem;color:var(--muted)">${date}</td>
-            <td style="white-space:nowrap;display:flex;gap:6px">
-              <button class="action-btn" onclick="openEdit('${row.id}')">Edit</button>
-              <button class="action-btn del" onclick="deleteEntry('${row.id}')">Delete</button>
-            </td>
-          </tr>`;
+        window.cacheData[row.id] = row;
+        const flagged = row.feedback === 'negative';
+        const fbHtml  = row.feedback
+          ? `<span class="fb-badge fb-${row.feedback}">${row.feedback === 'positive' ? 'Verified' : 'Flagged'}</span>`
+          : '<span style="color:var(--muted);font-size:.8rem">—</span>';
+        const mdxPrev = (row.mdx || '').slice(0, 70) + ((row.mdx || '').length > 70 ? '…' : '');
+        const date    = row.created_at ? new Date(row.created_at).toLocaleDateString() : '—';
+
+        return `<tr class="${flagged ? 'row-flagged' : ''}">
+          <td style="max-width:280px;word-break:break-word">${escHtml(row.question)}</td>
+          <td style="font-size:.78rem;color:var(--muted)">${escHtml(row.cube_name)}</td>
+          <td>${fbHtml}</td>
+          <td style="font-family:monospace;font-size:.75rem;color:var(--muted);max-width:200px"
+              title="${escHtml(row.mdx || '')}">${escHtml(mdxPrev)}</td>
+          <td style="font-size:.78rem;color:var(--muted);white-space:nowrap">${date}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-ghost btn-sm" onclick="openEdit('${row.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteEntry('${row.id}')">Delete</button>
+          </td>
+        </tr>`;
       }).join('');
     } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--red)">Error: ${e.message}</td></tr>`;
     }
   }
 
@@ -638,7 +549,7 @@
 
   // ── Edit modal ─────────────────────────────────────────────────────────────
   function openEdit(id) {
-    const row = window.cacheData && window.cacheData[id];
+    const row = window.cacheData[id];
     if (!row) return;
     editingId = id;
     document.getElementById('editModalSub').textContent = row.question;
@@ -654,63 +565,35 @@
   async function saveMdx() {
     const mdx = document.getElementById('editMdxArea').value.trim();
     if (!mdx) return;
-
     try {
       const res = await fetch(`/admin/cache/${editingId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mdx }),
       });
       if (!res.ok) throw new Error(await res.text());
       closeModal();
       loadCache(cachePage);
-    } catch (e) {
-      alert('Save failed: ' + e.message);
-    }
+    } catch (e) { alert('Save failed: ' + e.message); }
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
   async function deleteEntry(id) {
-    if (!confirm('Delete this cached pair from PostgreSQL and Qdrant?')) return;
+    if (!confirm('Delete this pair from PostgreSQL and Qdrant?')) return;
     try {
       const res = await fetch(`/admin/cache/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
       loadCache(cachePage);
-    } catch (e) {
-      alert('Delete failed: ' + e.message);
-    }
+    } catch (e) { alert('Delete failed: ' + e.message); }
   }
 
-  // ── Utils ──────────────────────────────────────────────────────────────────
-  function escHtml(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  // Close modal on overlay click
   document.getElementById('editModal').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeModal();
   });
 
-  // ── Query Log ──────────────────────────────────────────────────────────────
+  // ── Query History ──────────────────────────────────────────────────────────
   let logPage = 1;
   let logTotalPgs = 1;
 
-  const ACTION_STYLE = {
-    hit:     'background:#dcfce7;color:#166534',
-    patched: 'background:#dbeafe;color:#1d4ed8',
-    miss:    'background:#fef3c7;color:#92400e',
-    failed:  'background:#fee2e2;color:#991b1b',
-  };
-  const MISMATCH_LABEL = {
-    year:   '📅 Year',
-    entity: '🔄 Entity',
-    major:  '⚠ Major',
-    none:   '',
-  };
+  const MISMATCH_LABEL = { year: 'Year', entity: 'Entity', major: 'Major', none: '' };
 
   async function loadQueryLog(page = 1) {
     logPage = page;
@@ -728,7 +611,7 @@
       const data = await res.json();
       logTotalPgs = Math.max(1, Math.ceil(data.total / 50));
 
-      document.getElementById('logCount').textContent = `${data.total} queries`;
+      document.getElementById('logCount').textContent    = `${data.total} queries`;
       document.getElementById('logPageInfo').textContent = `Page ${logPage} / ${logTotalPgs}`;
       document.getElementById('logPrevPage').disabled = logPage <= 1;
       document.getElementById('logNextPage').disabled = logPage >= logTotalPgs;
@@ -740,28 +623,28 @@
 
       tbody.innerHTML = data.items.map(row => {
         const ts      = row.created_at ? new Date(row.created_at).toLocaleTimeString() : '—';
-        const actSt   = ACTION_STYLE[row.action] || '';
-        const mmLabel = MISMATCH_LABEL[row.mismatch] || (row.mismatch || '—');
+        const mm      = MISMATCH_LABEL[row.mismatch] || (row.mismatch || '—');
         const sim     = row.similarity != null ? (row.similarity * 100).toFixed(0) + '%' : '—';
         const matched = row.matched_q
-          ? `<span title="${escHtml(row.matched_q)}" style="cursor:help">${escHtml(row.matched_q.slice(0, 40))}${row.matched_q.length > 40 ? '…' : ''}</span>`
+          ? `<span title="${escHtml(row.matched_q)}" style="cursor:help;font-size:.78rem;color:var(--muted)">${escHtml(row.matched_q.slice(0, 45))}${row.matched_q.length > 45 ? '…' : ''}</span>`
           : '—';
 
-        // Add-to-cache button only for miss/failed rows that have no matched_id
-        const cacheBtn = (row.action === 'miss' || row.action === 'failed')
-          ? `<button class="btn btn-ghost" style="font-size:.72rem;padding:4px 10px"
-               onclick="addToCache('${escHtml(row.question)}','${escHtml(row.cube_name || '')}',
-                 '${escHtml(row.patched_mdx || '')}')">+ Cache</button>`
+        const cacheBtn = row.action === 'failed'
+          ? `<button class="btn btn-ghost btn-sm"
+               onclick="addToCache(${JSON.stringify(row.question)},${JSON.stringify(row.cube_name||'')},${JSON.stringify(row.patched_mdx||'')})">
+               Save to cache</button>`
+          : row.action === 'miss'
+          ? `<span style="font-size:.72rem;color:var(--muted)" title="Already auto-saved to cache by write-through">Auto-cached</span>`
           : '';
 
         return `<tr>
           <td style="font-size:.75rem;color:var(--muted);white-space:nowrap">${ts}</td>
-          <td style="max-width:240px;word-break:break-word;font-size:.82rem">${escHtml(row.question)}</td>
-          <td><span style="font-size:.72rem;padding:2px 8px;border-radius:99px;font-weight:600;${actSt}">${row.action}</span></td>
-          <td style="font-size:.8rem">${mmLabel}</td>
+          <td style="max-width:240px;word-break:break-word;font-size:.83rem">${escHtml(row.question)}</td>
+          <td><span class="action-badge action-${row.action}">${row.action}</span></td>
+          <td style="font-size:.8rem;color:var(--muted)">${mm}</td>
           <td style="font-size:.78rem;color:var(--muted)">${escHtml(row.cube_name || '—')}</td>
           <td style="font-size:.8rem">${sim}</td>
-          <td style="font-size:.78rem;color:var(--muted);max-width:200px">${matched}</td>
+          <td>${matched}</td>
           <td>${cacheBtn}</td>
         </tr>`;
       }).join('');
@@ -776,26 +659,27 @@
   }
 
   async function addToCache(question, cubeName, mdx) {
-    if (!question || !cubeName) {
-      alert('Missing question or cube name.');
-      return;
-    }
+    if (!question || !cubeName) { alert('Missing question or cube name.'); return; }
     if (!mdx) {
       mdx = prompt('No MDX available. Enter MDX to cache:', '') || '';
       if (!mdx) return;
     }
     try {
       const res = await fetch('/admin/query-log/add-to-cache', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question, cube_name: cubeName, mdx }),
       });
       if (!res.ok) throw new Error(await res.text());
-      alert('✓ Added to cache!');
+      alert('Saved to cache.');
       loadQueryLog(logPage);
-    } catch (e) {
-      alert('Failed: ' + e.message);
-    }
+    } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  // ── Utils ──────────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 </script>
 </body>

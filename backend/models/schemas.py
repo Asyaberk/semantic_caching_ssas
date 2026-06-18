@@ -31,8 +31,10 @@ class QAPair(BaseModel):
     complexity:       ComplexityLevel = ComplexityLevel.medium
     language:         str             = "en"
     langfuse_trace_id: Optional[str]  = None
-    # "pending" → "uploaded" | "failed" after upload attempt
     upload_status:    Optional[str]   = "pending"
+    # Template fields — parameterised MDX for entity-independent caching
+    mdx_template:     Optional[str]   = None   # MDX with {{YEAR}}, {{COUNTRY}} etc.
+    entity_map:       Optional[dict]  = None   # {"YEAR": "2025", "COUNTRY": "Turkey"}
 
 
 class PipelineState(BaseModel):
