@@ -59,7 +59,11 @@ class MDXGeneratorAgent:
         self._schema_cache: dict[str, str] = {}
         self._langfuse = self._init_langfuse()
 
-    # ── Langfuse ──────────────────────────────────────────────────────────
+    # ── Langfuse tracing ──────────────────────────────────────────────────
+    # IMPORTANT: Langfuse integration is intentional and must be kept.
+    # It records every LLM call (model, tokens, cost, input/output) to
+    # https://langfuse.iotiq.dev for the shared project.
+    # Do NOT remove this block — disable by leaving credentials empty in .env.
 
     def _init_langfuse(self):
         if not (settings.langfuse_public_key and settings.langfuse_secret_key):
@@ -67,13 +71,15 @@ class MDXGeneratorAgent:
             return None
         try:
             from langfuse import Langfuse
-            return Langfuse(
+            lf = Langfuse(
                 public_key=settings.langfuse_public_key,
                 secret_key=settings.langfuse_secret_key,
                 host=settings.langfuse_host,
             )
+            logger.info("Langfuse tracing enabled → %s", settings.langfuse_host)
+            return lf
         except Exception as exc:
-            logger.warning("Failed to initialise Langfuse: %s", exc)
+            logger.warning("Failed to initialise Langfuse (tracing disabled): %s", exc)
             return None
 
     # ── Helpers ───────────────────────────────────────────────────────────
@@ -159,13 +165,14 @@ class MDXGeneratorAgent:
                 trace.update(
                     output={"mdx": pair.mdx, "complexity": str(pair.complexity)},
                 )
+                self._langfuse.flush()   # force-send before returning
 
             logger.info("MDX generated for: '%s'", question[:70])
             return pair
 
         except Exception as exc:
-            if span:
-                span.end(level="ERROR", status_message=str(exc))
+            if trace:
+                trace.update(output={"error": str(exc)}, level="ERROR")
             logger.error("MDX generation failed for '%s': %s", question[:70], exc)
             raise RuntimeError(f"MDX generation failed: {exc}") from exc
 
