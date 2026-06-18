@@ -4,10 +4,40 @@ A semantic caching layer for SSAS (SQL Server Analysis Services) cubes.
 
 The system generates natural-language question / MDX pairs from cube schemas using an LLM, stores them in Qdrant for vector search, and serves cached MDX responses when users ask business questions — without hitting the LLM on every request.
 
-When a user asks a question:
-- **Cache Hit** → returns the stored MDX in ~50 ms, no LLM cost
-- **Cache Miss** → LLM generates a fresh MDX, stores it, and auto-generates 5 similar phrasings for future hits
-- **Negative Feedback** → the user's original question is re-cached with a fresh MDX; admin is notified
+---
+
+## How It Works
+
+Every incoming question goes through the `QueryResolverAgent`:
+
+```
+User question
+    → embed (text-embedding-3-small)
+    → Qdrant semantic search
+    → extract named entities (year, country, company, goods, container ID)
+    → compare entities with matched cache entry
+         ├── same entities          → Cache Hit       (~50 ms, no LLM)
+         ├── year / entity differs  → Template Hit     (fill {{YEAR}}/{{COUNTRY}} etc.)
+         │                            or Patch         (regex / LLM MDX edit)
+         │                            → write-through to Qdrant
+         └── topic mismatch        → Cache Miss        (LLM generates fresh MDX)
+                                      → save + build template + cache 5 paraphrases
+```
+
+### Parameterized MDX Templates
+
+When a Q&A pair is stored, entity values in its MDX are replaced with placeholders:
+
+```
+Cache MDX:  WHERE ([Year].&[2025] * [Country].&[Turkey])
+Template:   WHERE ([Year].&[{{YEAR}}] * [Country].&[{{COUNTRY}}])
+```
+
+When a similar question arrives with different entities, the template is filled directly — no LLM call, no regex. One cached pair can serve any year × country × company × container ID combination.
+
+### Write-Through
+
+Patched and template-filled results are immediately written back to Qdrant with `force=True` (bypassing the 0.95 dedup threshold). The next identical question is a direct **Cache Hit**.
 
 ---
 
@@ -15,21 +45,26 @@ When a user asks a question:
 
 ```
 SSAS Bridge API  ──►  Schema Provider
-                             │
+                            │
                     Question Generator (LLM)
-                             │
-                    MDX Generator (LLM)
-                             │
+                            │
+                    MDX Generator (LLM + Langfuse tracing)
+                            │
                     Qdrant Uploader
                       │          │
                  Qdrant        PostgreSQL
-               (vector search)  (source of truth)
+               (vector search)  (admin + logs)
+                      │
+              QueryResolverAgent
+              ┌───────┴──────────┐
+          entity_checker    mdx_template
+          (mismatch type)   ({{PLACEHOLDERS}})
 ```
 
-**Cubes:** 9 SSAS cubes (Accruement, CreditDebit, VesselOrder, Waiting, GangPoint, …)  
-**Pipeline:** Per-cube quotas (`QUESTIONS_PER_CUBE`), dedup at 0.95 cosine similarity  
+**Cubes:** 9 SSAS cubes (Accruement, CreditDebit, VesselOrder, Waiting, …)  
+**Similarity threshold:** 0.75 cosine similarity (configurable)  
 **Monitoring:** Every LLM call traced in Langfuse (model, tokens, cost, latency)  
-**Feedback loop:** Negative feedback triggers background MDX regeneration for the user's phrasing
+**Feedback:** Negative feedback flags the pair; admin edits MDX in the Cache tab
 
 ---
 
@@ -39,20 +74,22 @@ SSAS Bridge API  ──►  Schema Provider
 ssas_project/
 ├── backend/
 │   ├── agents/
+│   │   ├── entity_agent.py       # extracts year, country, company, goods, container ID
+│   │   ├── mdx_agent.py          # generates MDX queries via LLM + Langfuse tracing
+│   │   ├── query_resolver.py     # central decision agent (Hit/Template/Patch/Miss)
 │   │   ├── question_agent.py     # generates business questions from cube schema
-│   │   ├── mdx_agent.py          # generates MDX queries for each question
 │   │   └── uploader_agent.py     # embeds questions, upserts to Qdrant
 │   ├── db/
-│   │   └── database.py           # PostgreSQL helpers (save, fetch, feedback)
-│   ├── mock/
-│   │   ├── cube_schema.py        # mock cube schema for offline dev
-│   │   └── cube_formatter.py     # formats schema as LLM-readable text
+│   │   └── database.py           # PostgreSQL helpers (save, fetch, log, feedback)
 │   ├── models/
-│   │   └── schemas.py            # QAPair, PipelineState Pydantic models
+│   │   └── schemas.py            # QAPair (+ mdx_template, entity_map), PipelineState
 │   ├── services/
+│   │   ├── entity_checker.py     # NONE / YEAR / ENTITY / MAJOR mismatch classification
+│   │   ├── mdx_patcher.py        # regex year patch + LLM entity patch
+│   │   ├── mdx_template.py       # make_template / fill_template with {{PLACEHOLDERS}}
 │   │   └── schema_provider.py    # MockSchemaProvider / SSASSchemaProvider
 │   ├── config.py                 # settings from .env
-│   ├── admin_router.py           # /admin/* CRUD endpoints
+│   ├── admin_router.py           # /admin/* CRUD + query log endpoints
 │   ├── demo_router.py            # /demo/query, /demo/feedback, /demo/execute
 │   ├── main.py                   # FastAPI app, pipeline endpoints, static files
 │   └── orchestrator.py           # coordinates agents, background thread
@@ -86,13 +123,12 @@ cp .env.example .env
 | `QDRANT_COLLECTION_NAME` | Collection name (default: `ssas_qa_cache`) |
 | `LANGFUSE_PUBLIC_KEY` | Langfuse public key |
 | `LANGFUSE_SECRET_KEY` | Langfuse secret key |
-| `LANGFUSE_HOST` | Langfuse host URL |
-| `POSTGRES_*` | PostgreSQL connection settings |
+| `LANGFUSE_HOST` | Langfuse host (default: `https://cloud.langfuse.com`) |
+| `POSTGRES_URL` | PostgreSQL connection string |
 | `SSAS_URL` | SSAS Bridge base URL |
 | `SSAS_API_KEY` | SSAS Bridge API key |
 | `USE_MOCK_CUBE` | `true` = offline mock, `false` = real SSAS |
 | `QUESTIONS_PER_CUBE` | Questions to generate per cube (default: `50`) |
-| `QUESTIONS_PER_BATCH` | LLM batch size (default: `20`) |
 | `SIMILARITY_THRESHOLD` | Cache hit threshold, 0–1 (default: `0.75`) |
 
 ### 2. Start with Docker
@@ -105,60 +141,41 @@ docker compose up --build -d
 
 | URL | Description |
 |---|---|
-| `http://localhost:8002` | Admin UI — pipeline control, cache management |
+| `http://localhost:8002` | Admin UI — pipeline, cache management, query history |
 | `http://localhost:8002/demo` | Demo UI — semantic cache with live SSAS execution |
 | `http://localhost:8002/docs` | FastAPI interactive API docs |
 
 ---
 
-## How It Works
+## Query Resolution Detail
 
-### Seeding Pipeline
+### Status types
 
-```
-Admin clicks Start
-    → Orchestrator discovers all cube names via SSAS Bridge
-    → For each cube:
-        1. Load existing pairs from PostgreSQL → upload to Qdrant
-        2. While uploaded < QUESTIONS_PER_CUBE:
-             generate questions (LLM)  →  generate MDX (LLM)
-             →  save to PostgreSQL  →  upload to Qdrant
-```
+| Status | Meaning |
+|---|---|
+| **Hit** | Exact semantic match — MDX returned from Qdrant directly |
+| **Template Hit** | Matched pair has a template; user entities filled in — no LLM |
+| **Patched** | Year or entity differed — MDX edited and written back to cache |
+| **Miss** | No match above threshold — LLM generates fresh MDX |
+| **Failed** | SSAS execution error — logged for admin review |
 
-### Query Flow
+### Entity types extracted
 
-```
-User asks question
-    → embed with text-embedding-3-small
-    → search Qdrant (all cubes, no filter)
-    → similarity ≥ 0.75  →  Cache HIT  →  return stored MDX
-    → similarity < 0.75  →  Cache MISS →  LLM generates MDX
-                                        →  save to PostgreSQL + Qdrant
-                                        →  generate 5 similar phrasings
-                                        →  cache all 5
-```
+`year` · `country` · `company / customer` · `goods type` · `container / vessel ID`
 
-### Feedback Flow
+---
 
-```
-User clicks 👎
-    → pair flagged in PostgreSQL + Qdrant (feedback='negative')
-    → admin sees user's original question in red under the cached question
-    → background thread:
-        - uses cached pair's MDX as reference
-        - LLM adapts MDX for the user's exact phrasing
-        - new pair saved to PostgreSQL + Qdrant
-```
+## Admin Panel
 
-### SSAS Execution
+### Cache tab
+Lists all cached Q&A pairs. Filter by:
+- **Question** keyword (searches question text)
+- **MDX keyword** (searches MDX content — e.g. `2024`, `Turkey`)
+- **Cube** name
+- **Feedback** status (Flagged / Verified)
 
-```
-User clicks ▶ Run on SSAS
-    → sends MDX to SSAS Bridge /api/v1/mdx/query
-    → auto-fixes: date year keys (e.g. &[2025] → date range)
-    → fallback: if MDX fails, runs simplified aggregate query
-    → real cube data shown as table in UI
-```
+### Query History tab
+Logs every incoming query with outcome, similarity score, matched cache entry, and mismatch type. Failed queries have a **Save to cache** button for manual MDX entry.
 
 ---
 
@@ -171,8 +188,9 @@ User clicks ▶ Run on SSAS
 | `POST` | `/pipeline/stop` | Request a clean stop |
 | `GET` | `/pipeline/status` | Live pipeline state |
 | `GET` | `/admin/cache` | List cached pairs (filterable) |
-| `PUT` | `/admin/cache/{id}` | Edit a cached pair |
+| `PUT` | `/admin/cache/{id}` | Edit a cached pair's MDX |
 | `DELETE` | `/admin/cache/{id}` | Delete a cached pair |
+| `GET` | `/admin/query-log` | Query history with outcomes |
 | `POST` | `/demo/query` | Semantic cache lookup |
 | `POST` | `/demo/feedback` | Submit feedback for a result |
 | `POST` | `/demo/execute` | Run MDX against SSAS and return data |
@@ -182,37 +200,20 @@ User clicks ▶ Run on SSAS
 ```bash
 curl -X POST http://localhost:8002/demo/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "VAT total for Turkey in 2025?"}'
+  -d '{"question": "Total accruement for Turkey in 2025?"}'
 ```
 
 ```json
 {
-  "status": "hit",
-  "source": "cache",
-  "similarity": 0.97,
-  "matched_question": "VAT TOTAL for Turkey in 2025?",
+  "status": "template",
+  "source": "template",
+  "mismatch": "year",
+  "similarity": 0.96,
+  "matched_question": "Total accruement for Turkey in 2025?",
   "cube_name": "cubeAccruement",
-  "mdx": "SELECT {[Measures].[VAT TOTAL]} ON COLUMNS FROM [cubeAccruement] ...",
+  "mdx": "SELECT {[Measures].[Accruement Count]} ON COLUMNS FROM [cubeAccruement] WHERE ...",
   "pair_id": "b7621e10-...",
-  "response_time_ms": 48
-}
-```
-
-### Example: execute MDX
-
-```bash
-curl -X POST http://localhost:8002/demo/execute \
-  -H "Content-Type: application/json" \
-  -d '{"mdx": "SELECT {[Measures].[Accruement Count]} ON COLUMNS FROM [cubeAccruement]"}'
-```
-
-```json
-{
-  "columns": [{"name": "[Measures].[Accruement Count]", "type": "Object"}],
-  "rows": [{"[Measures].[Accruement Count]": 4861269}],
-  "row_count": 1,
-  "elapsed_ms": 8,
-  "error": null
+  "response_time_ms": 62
 }
 ```
 
@@ -243,5 +244,8 @@ uvicorn backend.main:app --reload --port 8002
 
 # Check PostgreSQL state
 docker exec ssas_postgres psql -U ssas -d ssas_cache \
-  -c "SELECT cube_name, COUNT(*), COUNT(feedback) FROM qa_pairs GROUP BY cube_name;"
+  -c "SELECT cube_name, COUNT(*), COUNT(mdx_template) AS templated FROM qa_pairs GROUP BY cube_name;"
+
+# Tail live logs
+docker logs -f ssas_seeder_backend
 ```

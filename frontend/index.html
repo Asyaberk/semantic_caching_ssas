@@ -290,12 +290,6 @@
               <option value="positive">Verified</option>
             </select>
           </div>
-          <div style="display:flex;align-items:flex-end;gap:6px">
-            <label style="font-size:.82rem;cursor:pointer;display:flex;align-items:center;gap:5px;padding-bottom:2px">
-              <input type="checkbox" id="filterTemplate" onchange="loadCache(1)" />
-              Template only
-            </label>
-          </div>
           <button class="btn btn-ghost" onclick="loadCache(1)" style="height:38px;align-self:flex-end">Refresh</button>
           <span id="cacheCount" style="align-self:flex-end;font-size:.82rem;color:var(--muted)"></span>
         </div>
@@ -488,13 +482,11 @@
     const feedback  = document.getElementById('filterFeedback').value;
     const search    = document.getElementById('filterSearch').value.trim();
     const mdxKw     = document.getElementById('filterMdx').value.trim();
-    const tmplOnly  = document.getElementById('filterTemplate').checked;
     const params    = new URLSearchParams({ page, page_size: 25 });
     if (cube)      params.set('cube_name', cube);
     if (feedback)  params.set('feedback', feedback);
-    if (search)    params.set('search', search);        // searches question text
-    if (mdxKw)     params.set('mdx_search', mdxKw);    // searches MDX content only
-    if (tmplOnly)  params.set('has_template', 'true');
+    if (search)    params.set('search', search);
+    if (mdxKw)     params.set('mdx_search', mdxKw);
 
     const tbody = document.getElementById('cacheTableBody');
     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Loading…</td></tr>';
