@@ -23,9 +23,15 @@ from qdrant_client.models import PointIdsList, Filter, FieldCondition, MatchValu
 from backend.config import settings
 from backend.agents.mdx_agent import MDXGeneratorAgent
 from backend.agents.uploader_agent import QdrantUploaderAgent
-from backend.db.database import save_pairs, save_feedback, save_feedback_by_id, get_pair_by_id
+from backend.agents.entity_agent import extract_entities
+from backend.db.database import (
+    save_pairs, save_feedback, save_feedback_by_id,
+    get_pair_by_id, log_query,
+)
 from backend.models.schemas import QAPair
 from backend.services.schema_provider import get_schema_provider
+from backend.services.entity_checker import check_mismatch, MismatchType
+from backend.services.mdx_patcher import patch_years, patch_entities_llm
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/demo", tags=["demo"])
@@ -53,15 +59,16 @@ class QueryRequest(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    status:           str          # "hit" | "miss"
-    source:           str          # "cache" | "llm"
+    status:           str          # "hit" | "patched" | "miss"
+    source:           str          # "cache" | "patched" | "llm"
     question:         str
     matched_question: str | None
     similarity:       float | None
     mdx:              str
     response_time_ms: int
-    cube_name:        str          # cube that answered the question
+    cube_name:        str
     pair_id:          str | None
+    mismatch:         str | None = None  # none/year/entity/major — set when patched
 
 
 class FeedbackRequest(BaseModel):
@@ -82,31 +89,47 @@ class FeedbackResponse(BaseModel):
 @router.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest):
     """
-    Semantic cache lookup demo endpoint.
+    Semantic cache lookup with entity-aware validation.
+
+    Flow:
+      1. Embed question + extract entities (parallel)
+      2. Qdrant semantic search
+      3. If score >= threshold:
+           a. Extract entities from matched question
+           b. Classify mismatch: NONE / YEAR / ENTITY / MAJOR
+           NONE   → Cache HIT  (return as-is)
+           YEAR   → patch years in MDX, return as 'patched'
+           ENTITY → LLM rewrites WHERE clause, return as 'patched'
+           MAJOR  → treat as cache miss (entity structure too different)
+      4. Cache MISS → LLM generates fresh MDX + write-through
+    Every query is logged to query_log for admin visibility.
     """
     import uuid as _uuid
     _NS = _uuid.NAMESPACE_DNS
 
     t0 = time.perf_counter()
 
-    # When semantic cache is disabled, skip Qdrant and always call LLM
+    # ── Semantic cache disabled ──────────────────────────────────────────────
     if not settings.enable_semantic_cache:
         cube = req.cube_name or "cubeAccruement"
-        logger.info("Semantic cache disabled — calling LLM directly for '%s'.", req.question)
+        logger.info("Semantic cache disabled — calling LLM for '%s'.", req.question)
         pair       = _mdx_agent.generate_for_question(question=req.question, cube_name=cube)
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
         pair_id    = str(_uuid.uuid5(_NS, f"{cube}::{req.question}"))
+        log_query(question=req.question, action="miss", cube_name=cube)
         return QueryResponse(
-            status="miss", source="llm",
+            status="miss", source="llm", mismatch=None,
             question=req.question, matched_question=None, similarity=None,
             mdx=pair.mdx, response_time_ms=elapsed_ms,
             cube_name=cube, pair_id=pair_id,
         )
 
-    # 1. Embed the question
-    vector = _embed(req.question)
+    # ── 1. Embed + extract entities ─────────────────────────────────────────
+    vector       = _embed(req.question)
+    user_entities = extract_entities(req.question, use_llm=True)
+    logger.info("User entities: %s", user_entities.model_dump())
 
-    # 2. Search Qdrant
+    # ── 2. Qdrant search ─────────────────────────────────────────────────────
     qdrant_filter = None
     if req.cube_name:
         qdrant_filter = Filter(
@@ -123,50 +146,104 @@ async def query(req: QueryRequest):
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
-    # 3a. Cache HIT — cube is taken from the matched payload
+    # ── 3. Above threshold → entity check ────────────────────────────────────
     if results and results[0].score >= req.threshold:
         best     = results[0]
         payload  = best.payload
         hit_cube = payload.get("cube_name") or req.cube_name or "unknown"
-        pair_id  = str(_uuid.uuid5(_NS, f"{hit_cube}::{payload.get('question', '')}"))
+        cached_q = payload.get("question", "")
+        cached_mdx = payload.get("mdx", "")
+        pair_id  = str(_uuid.uuid5(_NS, f"{hit_cube}::{cached_q}"))
+        score    = round(best.score, 4)
 
-        logger.info(
-            "Cache HIT for '%s' — matched '%s' in cube '%s' (score %.4f)",
-            req.question, payload.get("question"), hit_cube, best.score,
-        )
+        # Extract entities from the cached question
+        cached_entities = extract_entities(cached_q, use_llm=True)
+        mismatch = check_mismatch(user_entities, cached_entities)
 
-        return QueryResponse(
-            status           = "hit",
-            source           = "cache",
-            question         = req.question,
-            matched_question = payload.get("question"),
-            similarity       = round(best.score, 4),
-            mdx              = payload.get("mdx", ""),
-            response_time_ms = elapsed_ms,
-            cube_name        = hit_cube,
-            pair_id          = pair_id,
-        )
+        # ── NONE: entities match, clean hit ──────────────────────────────────
+        if mismatch == MismatchType.NONE:
+            logger.info("Cache HIT (no entity mismatch): '%s' ≈ '%s' (%.4f)",
+                        req.question, cached_q, score)
+            log_query(
+                question=req.question,
+                user_entities=user_entities.model_dump(),
+                matched_id=pair_id, matched_q=cached_q,
+                similarity=score, mismatch="none", action="hit",
+                cube_name=hit_cube,
+            )
+            return QueryResponse(
+                status="hit", source="cache", mismatch="none",
+                question=req.question, matched_question=cached_q,
+                similarity=score, mdx=cached_mdx,
+                response_time_ms=elapsed_ms,
+                cube_name=hit_cube, pair_id=pair_id,
+            )
 
-    # 3b. Cache MISS — need cube_name to generate MDX; fall back to first cube
-    cube      = req.cube_name or "cubeAccruement"
+        # ── YEAR: only year differs → cheap regex patch ───────────────────────
+        if mismatch == MismatchType.YEAR:
+            logger.info("Entity mismatch YEAR — patching MDX years %s→%s",
+                        cached_entities.years, user_entities.years)
+            patched_mdx = patch_years(cached_mdx, cached_entities, user_entities)
+            elapsed_ms  = int((time.perf_counter() - t0) * 1000)
+            log_query(
+                question=req.question,
+                user_entities=user_entities.model_dump(),
+                matched_id=pair_id, matched_q=cached_q,
+                similarity=score, mismatch="year", action="patched",
+                cube_name=hit_cube, patched_mdx=patched_mdx,
+            )
+            return QueryResponse(
+                status="patched", source="patched", mismatch="year",
+                question=req.question, matched_question=cached_q,
+                similarity=score, mdx=patched_mdx,
+                response_time_ms=elapsed_ms,
+                cube_name=hit_cube, pair_id=pair_id,
+            )
+
+        # ── ENTITY: country/company/goods differ → LLM patch ─────────────────
+        if mismatch == MismatchType.ENTITY:
+            logger.info("Entity mismatch ENTITY — calling LLM to patch MDX.")
+            patched_mdx = patch_entities_llm(
+                original_question=cached_q,
+                user_question=req.question,
+                cached_mdx=cached_mdx,
+                cube_name=hit_cube,
+            )
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            log_query(
+                question=req.question,
+                user_entities=user_entities.model_dump(),
+                matched_id=pair_id, matched_q=cached_q,
+                similarity=score, mismatch="entity", action="patched",
+                cube_name=hit_cube, patched_mdx=patched_mdx,
+            )
+            return QueryResponse(
+                status="patched", source="patched", mismatch="entity",
+                question=req.question, matched_question=cached_q,
+                similarity=score, mdx=patched_mdx,
+                response_time_ms=elapsed_ms,
+                cube_name=hit_cube, pair_id=pair_id,
+            )
+
+        # ── MAJOR: treat as miss (fall through) ───────────────────────────────
+        logger.info("Entity mismatch MAJOR — treating as cache miss.")
+
+    # ── 4. Cache MISS ────────────────────────────────────────────────────────
+    cube       = req.cube_name or "cubeAccruement"
     best_score = round(results[0].score, 4) if results else None
-    logger.info(
-        "Cache MISS for '%s' (best score: %s) — calling LLM for cube '%s'.",
-        req.question, best_score, cube,
-    )
+    matched_q  = results[0].payload.get("question") if results else None
+    logger.info("Cache MISS for '%s' (score: %s) — calling LLM.", req.question, best_score)
 
     pair    = _mdx_agent.generate_for_question(question=req.question, cube_name=cube)
     pair_id = str(_uuid.uuid5(_NS, f"{cube}::{req.question}"))
 
-    # Write-through: save original pair
     try:
         save_pairs([pair])
         _uploader.upload([pair])
-        logger.info("Write-through: saved '%s' to PostgreSQL + Qdrant.", req.question)
+        logger.info("Write-through: saved '%s'.", req.question)
     except Exception as exc:
         logger.warning("Write-through save failed (non-fatal): %s", exc)
 
-    # Background: generate and cache paraphrases so future similar queries hit cache
     threading.Thread(
         target=_cache_paraphrases,
         args=(req.question, req.cube_name, pair.mdx),
@@ -175,16 +252,23 @@ async def query(req: QueryRequest):
 
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
+    log_query(
+        question=req.question,
+        user_entities=user_entities.model_dump(),
+        matched_id=None, matched_q=matched_q,
+        similarity=best_score, mismatch="major" if (results and results[0].score >= req.threshold) else None,
+        action="miss", cube_name=cube,
+    )
+
     return QueryResponse(
-        status           = "miss",
-        source           = "llm",
-        question         = req.question,
-        matched_question = results[0].payload.get("question") if results else None,
-        similarity       = best_score,
-        mdx              = pair.mdx,
-        response_time_ms = elapsed_ms,
-        cube_name        = cube,
-        pair_id          = pair_id,
+        status="miss", source="llm", mismatch=None,
+        question=req.question,
+        matched_question=matched_q,
+        similarity=best_score,
+        mdx=pair.mdx,
+        response_time_ms=elapsed_ms,
+        cube_name=cube,
+        pair_id=pair_id,
     )
 
 
