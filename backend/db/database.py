@@ -73,9 +73,30 @@ def init_db() -> None:
     CREATE INDEX IF NOT EXISTS idx_qa_pairs_cube     ON qa_pairs(cube_name);
     CREATE INDEX IF NOT EXISTS idx_qa_pairs_feedback ON qa_pairs(feedback);
 
-    -- Add feedback column to pre-existing tables that were created without it
+    -- Incremental migrations (safe to re-run)
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS feedback      VARCHAR(20);
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS user_question TEXT;
+    ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS entities      JSONB;
+
+    -- Query log: every incoming query is recorded here
+    CREATE TABLE IF NOT EXISTS query_log (
+        id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        question       TEXT NOT NULL,
+        user_entities  JSONB,
+        matched_id     TEXT REFERENCES qa_pairs(id) ON DELETE SET NULL,
+        matched_q      TEXT,
+        similarity     FLOAT,
+        mismatch       VARCHAR(20),
+        action         VARCHAR(20),
+        cube_name      VARCHAR(255),
+        patched_mdx    TEXT,
+        error          TEXT,
+        created_at     TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_query_log_action     ON query_log(action);
+    CREATE INDEX IF NOT EXISTS idx_query_log_created_at ON query_log(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_query_log_mismatch   ON query_log(mismatch);
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -301,3 +322,93 @@ def delete_pair(pair_id: str) -> bool:
             deleted = cur.rowcount
         conn.commit()
     return deleted > 0
+
+
+# ── Query Log ─────────────────────────────────────────────────────────────────
+
+def log_query(
+    *,
+    question:      str,
+    user_entities: dict | None   = None,
+    matched_id:    str | None    = None,
+    matched_q:     str | None    = None,
+    similarity:    float | None  = None,
+    mismatch:      str | None    = None,   # none/year/entity/major
+    action:        str,                    # hit/patched/miss/failed
+    cube_name:     str | None    = None,
+    patched_mdx:   str | None    = None,
+    error:         str | None    = None,
+) -> None:
+    """
+    Append one row to query_log.
+    Non-fatal — if the write fails it is silently skipped.
+    """
+    import json as _json
+    sql = """
+        INSERT INTO query_log
+            (question, user_entities, matched_id, matched_q, similarity,
+             mismatch, action, cube_name, patched_mdx, error)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    question,
+                    _json.dumps(user_entities) if user_entities else None,
+                    matched_id,
+                    matched_q,
+                    similarity,
+                    mismatch,
+                    action,
+                    cube_name,
+                    patched_mdx,
+                    error,
+                ))
+            conn.commit()
+    except Exception as exc:
+        logger.warning("log_query failed (non-fatal): %s", exc)
+
+
+def get_query_log(
+    action:    str | None = None,
+    mismatch:  str | None = None,
+    page:      int = 1,
+    page_size: int = 50,
+) -> tuple[list[dict], int]:
+    """
+    Return paginated query log rows, newest first.
+    Optionally filter by action (hit/patched/miss/failed) or mismatch type.
+    """
+    conditions = []
+    params: list = []
+    if action:
+        conditions.append("action = %s");   params.append(action)
+    if mismatch:
+        conditions.append("mismatch = %s"); params.append(mismatch)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    offset = (page - 1) * page_size
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute(f"SELECT COUNT(*) FROM query_log {where}", params)
+            total = cur.fetchone()[0]
+            cur.execute(
+                f"""
+                SELECT id, question, user_entities, matched_id, matched_q,
+                       similarity, mismatch, action, cube_name, patched_mdx,
+                       error, created_at
+                FROM   query_log {where}
+                ORDER  BY created_at DESC
+                LIMIT  %s OFFSET %s
+                """,
+                params + [page_size, offset],
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+
+    for r in rows:
+        if r.get("created_at"):
+            r["created_at"] = r["created_at"].isoformat()
+
+    return rows, total
