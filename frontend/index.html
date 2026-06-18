@@ -277,6 +277,7 @@
     <div class="brand">⚡ Cache Seeder <span>Admin Panel</span></div>
     <button class="nav-item active" id="nav-pipeline" onclick="switchTab('pipeline')">📊 Pipeline</button>
     <button class="nav-item" id="nav-cache" onclick="switchTab('cache')">🗂 Cache Management</button>
+    <button class="nav-item" id="nav-log" onclick="switchTab('log')">📋 Query Log</button>
     <a href="/demo" style="text-decoration:none; margin-top:auto">
       <button class="nav-item">🔍 Demo UI</button>
     </a>
@@ -400,6 +401,67 @@
       </div>
     </div>
 
+    <!-- ══ Query Log Tab ══ -->
+    <div class="tab-page" id="tab-log">
+      <div class="page-header">
+        <h1>Query Log</h1>
+        <p>Every incoming query — hits, mismatches, misses, and failures. One-click cache for missed queries.</p>
+      </div>
+
+      <div class="card">
+        <!-- Filters -->
+        <div class="filter-row" style="margin-bottom:16px">
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Action</div>
+            <select id="logFilterAction" onchange="loadQueryLog(1)">
+              <option value="">All</option>
+              <option value="hit">✓ Hit</option>
+              <option value="patched">⚡ Patched</option>
+              <option value="miss">◯ Miss</option>
+              <option value="failed">✗ Failed</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:4px">Mismatch</div>
+            <select id="logFilterMismatch" onchange="loadQueryLog(1)">
+              <option value="">All</option>
+              <option value="year">📅 Year</option>
+              <option value="entity">🔄 Entity</option>
+              <option value="major">⚠ Major</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost" onclick="loadQueryLog(1)" style="height:38px;align-self:flex-end">↺ Refresh</button>
+          <span id="logCount" style="align-self:flex-end;font-size:.82rem;color:var(--muted)"></span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Question</th>
+                <th>Action</th>
+                <th>Mismatch</th>
+                <th>Cube</th>
+                <th>Similarity</th>
+                <th>Matched</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="logTableBody">
+              <tr><td colspan="8" class="empty-state">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <button class="page-btn" id="logPrevPage" onclick="changeLogPage(-1)" disabled>← Prev</button>
+          <span id="logPageInfo">Page 1</span>
+          <button class="page-btn" id="logNextPage" onclick="changeLogPage(1)">Next →</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -424,6 +486,7 @@
     document.getElementById('tab-' + tab).classList.add('active');
     document.getElementById('nav-' + tab).classList.add('active');
     if (tab === 'cache') loadCache(1);
+    if (tab === 'log')   loadQueryLog(1);
   }
 
   // ── Pipeline ──────────────────────────────────────────────────────────────
@@ -631,6 +694,109 @@
   document.getElementById('editModal').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeModal();
   });
+
+  // ── Query Log ──────────────────────────────────────────────────────────────
+  let logPage = 1;
+  let logTotalPgs = 1;
+
+  const ACTION_STYLE = {
+    hit:     'background:#dcfce7;color:#166534',
+    patched: 'background:#dbeafe;color:#1d4ed8',
+    miss:    'background:#fef3c7;color:#92400e',
+    failed:  'background:#fee2e2;color:#991b1b',
+  };
+  const MISMATCH_LABEL = {
+    year:   '📅 Year',
+    entity: '🔄 Entity',
+    major:  '⚠ Major',
+    none:   '',
+  };
+
+  async function loadQueryLog(page = 1) {
+    logPage = page;
+    const action   = document.getElementById('logFilterAction').value;
+    const mismatch = document.getElementById('logFilterMismatch').value;
+    const params   = new URLSearchParams({ page, page_size: 50 });
+    if (action)   params.set('action', action);
+    if (mismatch) params.set('mismatch', mismatch);
+
+    const tbody = document.getElementById('logTableBody');
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Loading…</td></tr>';
+
+    try {
+      const res  = await fetch('/admin/query-log?' + params);
+      const data = await res.json();
+      logTotalPgs = Math.max(1, Math.ceil(data.total / 50));
+
+      document.getElementById('logCount').textContent = `${data.total} queries`;
+      document.getElementById('logPageInfo').textContent = `Page ${logPage} / ${logTotalPgs}`;
+      document.getElementById('logPrevPage').disabled = logPage <= 1;
+      document.getElementById('logNextPage').disabled = logPage >= logTotalPgs;
+
+      if (!data.items.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No queries logged yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.items.map(row => {
+        const ts      = row.created_at ? new Date(row.created_at).toLocaleTimeString() : '—';
+        const actSt   = ACTION_STYLE[row.action] || '';
+        const mmLabel = MISMATCH_LABEL[row.mismatch] || (row.mismatch || '—');
+        const sim     = row.similarity != null ? (row.similarity * 100).toFixed(0) + '%' : '—';
+        const matched = row.matched_q
+          ? `<span title="${escHtml(row.matched_q)}" style="cursor:help">${escHtml(row.matched_q.slice(0, 40))}${row.matched_q.length > 40 ? '…' : ''}</span>`
+          : '—';
+
+        // Add-to-cache button only for miss/failed rows that have no matched_id
+        const cacheBtn = (row.action === 'miss' || row.action === 'failed')
+          ? `<button class="btn btn-ghost" style="font-size:.72rem;padding:4px 10px"
+               onclick="addToCache('${escHtml(row.question)}','${escHtml(row.cube_name || '')}',
+                 '${escHtml(row.patched_mdx || '')}')">+ Cache</button>`
+          : '';
+
+        return `<tr>
+          <td style="font-size:.75rem;color:var(--muted);white-space:nowrap">${ts}</td>
+          <td style="max-width:240px;word-break:break-word;font-size:.82rem">${escHtml(row.question)}</td>
+          <td><span style="font-size:.72rem;padding:2px 8px;border-radius:99px;font-weight:600;${actSt}">${row.action}</span></td>
+          <td style="font-size:.8rem">${mmLabel}</td>
+          <td style="font-size:.78rem;color:var(--muted)">${escHtml(row.cube_name || '—')}</td>
+          <td style="font-size:.8rem">${sim}</td>
+          <td style="font-size:.78rem;color:var(--muted);max-width:200px">${matched}</td>
+          <td>${cacheBtn}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="color:var(--red)">Error: ${e.message}</td></tr>`;
+    }
+  }
+
+  function changeLogPage(delta) {
+    const newPage = logPage + delta;
+    if (newPage >= 1 && newPage <= logTotalPgs) loadQueryLog(newPage);
+  }
+
+  async function addToCache(question, cubeName, mdx) {
+    if (!question || !cubeName) {
+      alert('Missing question or cube name.');
+      return;
+    }
+    if (!mdx) {
+      mdx = prompt('No MDX available. Enter MDX to cache:', '') || '';
+      if (!mdx) return;
+    }
+    try {
+      const res = await fetch('/admin/query-log/add-to-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, cube_name: cubeName, mdx }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      alert('✓ Added to cache!');
+      loadQueryLog(logPage);
+    } catch (e) {
+      alert('Failed: ' + e.message);
+    }
+  }
 </script>
 </body>
 </html>

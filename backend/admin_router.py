@@ -18,7 +18,11 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointIdsList, Filter, FieldCondition, MatchValue
 
 from backend.config  import settings
-from backend.db.database import get_all_pairs, update_pair_mdx, delete_pair
+from backend.db.database import (
+    get_all_pairs, update_pair_mdx, delete_pair,
+    get_query_log, save_pairs,
+)
+from backend.models.schemas import QAPair
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -113,3 +117,62 @@ async def delete_cache_entry(pair_id: str):
         logger.warning("Qdrant delete failed (non-fatal): %s", exc)
 
     return {"deleted": True, "pair_id": pair_id}
+
+
+# ── Query Log ─────────────────────────────────────────────────────────────────
+
+class QueryLogResponse(BaseModel):
+    total:     int
+    page:      int
+    page_size: int
+    items:     list[dict]
+
+
+@router.get("/query-log", response_model=QueryLogResponse)
+async def list_query_log(
+    action:    str | None = Query(None, description="hit | patched | miss | failed"),
+    mismatch:  str | None = Query(None, description="none | year | entity | major"),
+    page:      int        = Query(1,    ge=1),
+    page_size: int        = Query(50,   ge=1, le=200),
+):
+    """
+    Return paginated query log rows, newest first.
+    Filter by action and/or mismatch type.
+    """
+    rows, total = get_query_log(
+        action=action, mismatch=mismatch,
+        page=page, page_size=page_size,
+    )
+    return QueryLogResponse(total=total, page=page, page_size=page_size, items=rows)
+
+
+class AddToCacheRequest(BaseModel):
+    question:  str
+    mdx:       str
+    cube_name: str
+
+
+@router.post("/query-log/add-to-cache")
+async def add_to_cache(req: AddToCacheRequest):
+    """
+    Save a failed / patched query as a new cached pair in PostgreSQL + Qdrant.
+    Called from the admin Query Log UI.
+    """
+    import uuid as _uuid
+    from backend.agents.uploader_agent import QdrantUploaderAgent
+
+    pair = QAPair(
+        id        = str(_uuid.uuid4()),
+        cube_name = req.cube_name,
+        question  = req.question,
+        mdx       = req.mdx,
+    )
+    try:
+        saved = save_pairs([pair])
+        uploader = QdrantUploaderAgent()
+        uploader.upload([pair])
+        logger.info("Admin: added '%s' to cache (cube=%s).", req.question, req.cube_name)
+        return {"saved": saved > 0, "pair_id": pair.id}
+    except Exception as exc:
+        logger.error("add-to-cache failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
