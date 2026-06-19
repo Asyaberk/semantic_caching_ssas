@@ -250,6 +250,26 @@
 
     .hidden { display: none !important; }
 
+    .prompt-feedback {
+      border: 1px solid #fed7aa;
+      background: #fff7ed;
+      color: #9a3412;
+      border-radius: 14px;
+      padding: 18px;
+      line-height: 1.5;
+    }
+    .prompt-feedback strong { color: #7c2d12; }
+    .prompt-feedback ul { margin: 10px 0 0 18px; padding: 0; }
+    .prompt-feedback li { margin: 4px 0; }
+    .prompt-examples {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;
+    }
+    .prompt-examples button {
+      border: 1px solid #fdba74; background: #ffedd5; color: #9a3412;
+      border-radius: 999px; padding: 6px 10px; cursor: pointer; font-size: .78rem;
+    }
+    .prompt-examples button:hover { background: #fed7aa; }
+
   /* SSAS result table */
   .ssas-section { margin-top: 18px; }
   .ssas-btn {
@@ -357,6 +377,11 @@
 
   function renderResult(d) {
     currentMdx = d.mdx || '';
+    if (d.status === 'needs_clarification' || d.status === 'not_answerable') {
+      renderPromptFeedback(d);
+      return;
+    }
+
     const isHit      = d.status === 'hit';
     const isTemplate = d.status === 'template';
     const isPatched  = d.status === 'patched';
@@ -442,6 +467,36 @@
       </div>
 
       ${paraphraseNotice}
+    `;
+  }
+
+  function renderPromptFeedback(d) {
+    currentCube   = d.cube_name || null;
+    currentPairId = null;
+    currentMdx    = '';
+
+    const title = d.status === 'not_answerable'
+      ? 'Bu soruya cube verilerinde karşılık bulamadım'
+      : 'Soruyu biraz netleştirmem gerekiyor';
+    const suggestions = (d.suggestions || []).map(s => `<li>${escHtml(s)}</li>`).join('');
+    const matched = d.matched_question ? `
+      <div style="font-size:.78rem;color:#9a3412;margin-top:10px">
+        En yakın cache sorusu: “${escHtml(d.matched_question)}”
+        ${d.similarity != null ? `(${(d.similarity * 100).toFixed(1)}%)` : ''}
+      </div>` : '';
+
+    document.getElementById('result').innerHTML = `
+      <div class="prompt-feedback">
+        <strong>${escHtml(title)}</strong>
+        <div style="margin-top:6px">${escHtml(d.feedback_message || 'Soru mevcut cube şemasıyla yeterince eşleşmedi.')}</div>
+        ${suggestions ? `<ul>${suggestions}</ul>` : ''}
+        ${matched}
+        <div class="prompt-examples">
+          <button onclick="setQ('2025 Türkiye toplam tahakkuk nedir?'); ask()">2025 Türkiye tahakkuk</button>
+          <button onclick="setQ('2024 gemi bekleme sürelerini göster'); ask()">Gemi bekleme 2024</button>
+          <button onclick="setQ('2025 toplam vessel order sayısı kaç?'); ask()">Vessel order 2025</button>
+        </div>
+      </div>
     `;
   }
 

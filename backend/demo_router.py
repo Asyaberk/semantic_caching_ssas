@@ -54,8 +54,8 @@ class QueryRequest(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    status:           str          # "hit" | "template" | "patched" | "miss"
-    source:           str          # "cache" | "template" | "patched" | "llm"
+    status:           str          # "hit" | "template" | "patched" | "miss" | "needs_clarification" | "not_answerable"
+    source:           str          # "cache" | "template" | "patched" | "llm" | "validation"
     question:         str
     matched_question: str | None
     similarity:       float | None
@@ -64,6 +64,8 @@ class QueryResponse(BaseModel):
     cube_name:        str
     pair_id:          str | None
     mismatch:         str | None = None
+    feedback_message: str | None = None
+    suggestions:      list[str] | None = None
 
 
 class FeedbackRequest(BaseModel):
@@ -121,6 +123,8 @@ async def query(req: QueryRequest):
         cube_name        = result.cube_name,
         pair_id          = result.pair_id,
         mismatch         = result.mismatch,
+        feedback_message = result.feedback_message,
+        suggestions      = result.suggestions,
     )
 
 

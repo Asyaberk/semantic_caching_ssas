@@ -12,6 +12,7 @@ Every incoming question goes through the `QueryResolverAgent`:
 
 ```
 User question
+    → prompt quality guard (rejects vague / out-of-schema questions)
     → embed (text-embedding-3-small)
     → Qdrant semantic search
     → extract named entities (year, country, company, goods, container ID)
@@ -20,8 +21,9 @@ User question
          ├── year / entity differs  → Template Hit     (fill {{YEAR}}/{{COUNTRY}} etc.)
          │                            or Patch         (regex / LLM MDX edit)
          │                            → write-through to Qdrant
-         └── topic mismatch        → Cache Miss        (LLM generates fresh MDX)
-                                      → save + build template + cache 5 paraphrases
+         ├── schema match, no cache → Cache Miss        (LLM generates fresh MDX)
+         │                            → save + build template + cache 5 paraphrases
+         └── no schema match        → User feedback    (no MDX, no SSAS execution)
 ```
 
 ### Parameterized MDX Templates
@@ -64,7 +66,8 @@ SSAS Bridge API  ──►  Schema Provider
 **Cubes:** 9 SSAS cubes (Accruement, CreditDebit, VesselOrder, Waiting, …)  
 **Similarity threshold:** 0.75 cosine similarity (configurable)  
 **Monitoring:** Every LLM call traced in Langfuse (model, tokens, cost, latency)  
-**Feedback:** Negative feedback flags the pair; admin edits MDX in the Cache tab
+**Feedback:** Negative feedback flags the pair; admin edits MDX in the Cache tab  
+**Prompt guard:** Vague or out-of-schema questions return actionable user feedback instead of generating unsafe MDX
 
 ---
 
@@ -87,6 +90,7 @@ ssas_project/
 │   │   ├── entity_checker.py     # NONE / YEAR / ENTITY / MAJOR mismatch classification
 │   │   ├── mdx_patcher.py        # regex year patch + LLM entity patch
 │   │   ├── mdx_template.py       # make_template / fill_template with {{PLACEHOLDERS}}
+│   │   ├── question_guard.py     # prompt quality guard + deterministic cube routing
 │   │   └── schema_provider.py    # MockSchemaProvider / SSASSchemaProvider
 │   ├── config.py                 # settings from .env
 │   ├── admin_router.py           # /admin/* CRUD + query log endpoints

@@ -48,6 +48,7 @@ from backend.services.mdx_template import (
     make_template, fill_template, has_placeholders, extract_entity_map
 )
 from backend.services.schema_provider import get_schema_provider
+from backend.services.question_guard import quick_validate_question, route_question_to_cube
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,8 @@ _NS = uuid.NAMESPACE_DNS
 
 @dataclass
 class ResolverResult:
-    status:           str            # "hit" | "template" | "patched" | "miss"
-    source:           str            # "cache" | "template" | "patched" | "llm"
+    status:           str            # "hit" | "template" | "patched" | "miss" | "needs_clarification" | "not_answerable"
+    source:           str            # "cache" | "template" | "patched" | "llm" | "validation"
     question:         str
     matched_question: str | None
     similarity:       float | None
@@ -68,6 +69,8 @@ class ResolverResult:
     cube_name:        str
     pair_id:          str | None
     mismatch:         str | None = None
+    feedback_message: str | None = None
+    suggestions:      list[str] | None = None
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -90,7 +93,8 @@ class QueryResolverAgent:
             api_key=settings.qdrant_api_key,
             https=True,
         )
-        self._mdx_agent = MDXGeneratorAgent(provider=get_schema_provider())
+        self._provider  = get_schema_provider()
+        self._mdx_agent = MDXGeneratorAgent(provider=self._provider)
         self._uploader  = QdrantUploaderAgent()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -102,6 +106,10 @@ class QueryResolverAgent:
         threshold:  float      = DEFAULT_THRESHOLD,
     ) -> ResolverResult:
         t0 = time.perf_counter()
+
+        quick_validation = quick_validate_question(question)
+        if quick_validation:
+            return self._validation_result(question, cube_name, t0, quick_validation)
 
         if not settings.enable_semantic_cache:
             return self._full_miss(question, cube_name, t0, None, None)
@@ -119,7 +127,23 @@ class QueryResolverAgent:
 
         best_score = round(results[0].score, 4) if results else None
         matched_q  = results[0].payload.get("question") if results else None
-        return self._full_miss(question, cube_name, t0, best_score, matched_q)
+
+        routing = route_question_to_cube(
+            question=question,
+            provider=self._provider,
+            requested_cube=cube_name,
+        )
+        if not routing.valid:
+            return self._validation_result(
+                question=question,
+                cube_name=routing.suggested_cube or cube_name,
+                t0=t0,
+                validation=routing,
+                similarity=best_score,
+                matched_q=matched_q,
+            )
+
+        return self._full_miss(question, routing.suggested_cube or cube_name, t0, best_score, matched_q)
 
     # ── Private: candidate handling ───────────────────────────────────────────
 
@@ -348,6 +372,43 @@ class QueryResolverAgent:
             question=question, matched_question=matched_q,
             similarity=similarity, mdx=pair.mdx,
             response_time_ms=elapsed_ms, cube_name=cube, pair_id=pair_id,
+        )
+
+    def _validation_result(
+        self,
+        question:   str,
+        cube_name:  str | None,
+        t0:         float,
+        validation,
+        similarity: float | None = None,
+        matched_q:  str | None = None,
+    ) -> ResolverResult:
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        cube = cube_name or validation.suggested_cube or ""
+
+        log_query(
+            question=question,
+            matched_q=matched_q,
+            similarity=similarity,
+            mismatch=validation.status,
+            action=validation.status,
+            cube_name=cube or None,
+            error=validation.message,
+        )
+
+        return ResolverResult(
+            status=validation.status,
+            source="validation",
+            mismatch=validation.status,
+            question=question,
+            matched_question=matched_q,
+            similarity=similarity,
+            mdx="",
+            response_time_ms=elapsed_ms,
+            cube_name=cube,
+            pair_id=None,
+            feedback_message=validation.message,
+            suggestions=validation.suggestions,
         )
 
     # ── Private: helpers ──────────────────────────────────────────────────────

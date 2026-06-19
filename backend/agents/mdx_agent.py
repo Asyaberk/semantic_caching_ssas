@@ -31,6 +31,10 @@ that correctly answers the question.
 Rules:
 - Use exact dimension and hierarchy names from the schema. Never invent names.
 - The query must be syntactically valid and executable against the described cube.
+- Answer only from the target cube. Keep the FROM clause exactly on that cube.
+- If a requested business concept is not present in the schema, do not substitute
+  a similar-looking measure or dimension. The application validates this before
+  calling you, so prefer precision over guessing.
 - Return ONLY a valid JSON object — no markdown, no explanation.
 
 CRITICAL — Year/Date filtering:
@@ -257,6 +261,13 @@ Below is the schema of the '{cube_name}' SSAS cube:
 
 Write an MDX query that answers the following question:
 "{question}"
+
+Important:
+- Use only the schema above for cube '{cube_name}'.
+- Keep all user-requested filters and breakdowns. Do not simplify to a grand
+  total when the user asked for a country, vessel, customer, date, or ranking.
+- If a member value is needed, use the key/caption style shown in the schema.
+- Prefer NON EMPTY when putting sets on ROWS.
 
 Return a JSON object with exactly these keys:
 {{
