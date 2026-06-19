@@ -137,6 +137,11 @@
     .btn-ask:hover { background: #3251d4; }
     .btn-ask:active { transform: scale(0.97); }
     .btn-ask:disabled { background: var(--muted); cursor: not-allowed; }
+    .auto-validate {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: .78rem; color: var(--muted); cursor: pointer; user-select: none;
+    }
+    .auto-validate input { accent-color: var(--accent); }
 
     /* ── Examples ── */
     .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
@@ -367,6 +372,10 @@
     <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
       <button class="btn-ask" id="askBtn" onclick="ask()">Ask →</button>
       <span style="font-size:.78rem;color:var(--muted)">The system will automatically find the right cube.</span>
+      <label class="auto-validate">
+        <input type="checkbox" id="autoValidate" checked />
+        Validate automatically on SSAS
+      </label>
     </div>
 
     <div class="examples" id="exampleCatalog">
@@ -468,6 +477,9 @@
       currentCube   = data.cube_name;
       currentPairId = data.pair_id || null;
       renderResult(data);
+      if (data.mdx && document.getElementById('autoValidate').checked) {
+        await runOnSSAS(true);
+      }
     } catch (e) {
       resultEl.innerHTML = `<div class="loading-row" style="color:#dc2626">Error: ${e.message}</div>`;
     } finally {
@@ -531,6 +543,7 @@
       <div class="result-header">
         <div class="status-pill ${pillClass}">${pillLabel}</div>${mismatchBadge}
         <span style="font-size:.82rem;color:var(--muted)">${sourceLabel}</span>
+        <span id="validationBadge" style="font-size:.72rem;color:var(--muted)">Not validated</span>
         <span class="timing">${d.response_time_ms} ms</span>
       </div>
 
@@ -601,10 +614,15 @@
     `;
   }
 
-  async function runOnSSAS() {
+  async function runOnSSAS(automatic = false) {
     if (!currentMdx) return;
     const btn = document.getElementById('runBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+    const validationBadge = document.getElementById('validationBadge');
+    if (btn) { btn.disabled = true; btn.textContent = automatic ? 'Validating...' : 'Running...'; }
+    if (validationBadge) {
+      validationBadge.textContent = automatic ? 'Validating on SSAS…' : 'Running on SSAS…';
+      validationBadge.style.color = 'var(--accent)';
+    }
     const out = document.getElementById('ssasResult');
     if (out) out.innerHTML = '<div style="font-size:.8rem;color:var(--muted);margin-top:8px">Querying SSAS…</div>';
 
@@ -624,6 +642,10 @@
       if (!res.ok || data.status === 'failed') {
         const message = data.detail || data.error || 'The SSAS query could not be executed.';
         if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">Error: ${escHtml(message)}</div>`;
+        if (validationBadge) {
+          validationBadge.textContent = 'SSAS validation failed';
+          validationBadge.style.color = 'var(--red)';
+        }
         return;
       }
 
@@ -637,6 +659,10 @@
 
       if (data.status === 'no_data') {
         if (out) out.innerHTML = `${validationNote}<div style="font-size:.8rem;color:var(--muted);margin-top:8px">The MDX is valid, but SSAS returned no rows. This usually means the generated filters do not match real cube members. Try an aggregate example first, or inspect exact members in Admin → Cube Explorer.</div>`;
+        if (validationBadge) {
+          validationBadge.textContent = 'Valid MDX · no data';
+          validationBadge.style.color = 'var(--amber)';
+        }
         return;
       }
 
@@ -662,8 +688,16 @@
       if (data.cache_updated) html += '<div style="font-size:.73rem;color:var(--muted);margin-top:4px">The validated MDX was written back to the cache.</div>';
 
       if (out) out.innerHTML = html;
+      if (validationBadge) {
+        validationBadge.textContent = `Verified on SSAS · ${data.row_count} row(s)`;
+        validationBadge.style.color = 'var(--green)';
+      }
     } catch(e) {
       if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">Request failed: ${escHtml(e.message)}</div>`;
+      if (validationBadge) {
+        validationBadge.textContent = 'Validation request failed';
+        validationBadge.style.color = 'var(--red)';
+      }
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Run on SSAS'; }
     }

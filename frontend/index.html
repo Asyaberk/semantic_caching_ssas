@@ -278,6 +278,10 @@
           <div class="stat-label">Failure Rate</div>
           <div class="stat-value" id="qualityFailedRate">—</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">No-data Rate</div>
+          <div class="stat-value" id="qualityNoDataRate">—</div>
+        </div>
       </div>
 
       <div class="card">
@@ -324,12 +328,13 @@
                 <th>Queries</th>
                 <th>Hits</th>
                 <th>Misses</th>
+                <th>No data</th>
                 <th>Failures</th>
                 <th>Score</th>
               </tr>
             </thead>
             <tbody id="qualityCubeBody">
-              <tr><td colspan="9" class="empty-state">Loading quality metrics…</td></tr>
+              <tr><td colspan="10" class="empty-state">Loading quality metrics…</td></tr>
             </tbody>
           </table>
         </div>
@@ -924,7 +929,7 @@
       renderQualityOverview(data);
     } catch (e) {
       document.getElementById('qualityCubeBody').innerHTML =
-        `<tr><td colspan="9" class="empty-state" style="color:var(--red)">Error: ${escHtml(e.message)}</td></tr>`;
+        `<tr><td colspan="10" class="empty-state" style="color:var(--red)">Error: ${escHtml(e.message)}</td></tr>`;
     }
   }
 
@@ -938,11 +943,13 @@
   function renderQualityOverview(data) {
     const cache = data.cache || {};
     const log = data.query_log || {};
+    const execution = data.execution_log || {};
     const health = data.health || {};
     document.getElementById('qualityCachePairs').textContent = cache.total ?? '0';
     document.getElementById('qualityQdrantPoints').textContent = health.qdrant?.points ?? '—';
     document.getElementById('qualityHitRate').textContent = `${log.hit_like_rate ?? 0}%`;
-    document.getElementById('qualityFailedRate').textContent = `${log.failed_rate ?? 0}%`;
+    document.getElementById('qualityFailedRate').textContent = `${execution.failed_rate ?? log.failed_rate ?? 0}%`;
+    document.getElementById('qualityNoDataRate').textContent = `${execution.no_data_rate ?? 0}%`;
     document.getElementById('qualityValidationRate').textContent = `${log.validation_block_rate ?? 0}%`;
 
     document.getElementById('healthSsas').innerHTML =
@@ -954,14 +961,14 @@
     const body = document.getElementById('qualityCubeBody');
     const cubes = data.cubes || [];
     if (!cubes.length) {
-      body.innerHTML = '<tr><td colspan="9" class="empty-state">No cube quality data yet.</td></tr>';
+      body.innerHTML = '<tr><td colspan="10" class="empty-state">No cube quality data yet.</td></tr>';
       return;
     }
 
     body.innerHTML = cubes.map(cube => {
       const score = cube.quality_score ?? 0;
       const scoreColor = score >= 85 ? 'var(--green)' : score >= 65 ? 'var(--amber)' : 'var(--red)';
-      const failures = (cube.failed || 0) + (cube.not_answerable || 0);
+      const failures = (cube.failed || 0) + (cube.execution_failed || 0);
       return `<tr>
         <td style="font-weight:650">${escHtml(cube.cube_name)}</td>
         <td>${cube.cached_pairs ?? 0}</td>
@@ -970,6 +977,7 @@
         <td>${cube.queries ?? 0}</td>
         <td>${(cube.hits || 0) + (cube.templates || 0) + (cube.patched || 0)}</td>
         <td>${cube.misses ?? 0}</td>
+        <td>${cube.no_data ?? 0}</td>
         <td>${failures}</td>
         <td><span class="status-badge" style="background:var(--bg);color:${scoreColor}">${score}</span></td>
       </tr>`;

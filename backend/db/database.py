@@ -99,6 +99,25 @@ def init_db() -> None:
     CREATE INDEX IF NOT EXISTS idx_query_log_action     ON query_log(action);
     CREATE INDEX IF NOT EXISTS idx_query_log_created_at ON query_log(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_query_log_mismatch   ON query_log(mismatch);
+
+    CREATE TABLE IF NOT EXISTS execution_log (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        question    TEXT,
+        pair_id     TEXT,
+        cube_name   VARCHAR(255),
+        status      VARCHAR(30) NOT NULL,
+        attempt     VARCHAR(30),
+        row_count   INTEGER DEFAULT 0,
+        error       TEXT,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_execution_log_status
+        ON execution_log(status);
+    CREATE INDEX IF NOT EXISTS idx_execution_log_cube
+        ON execution_log(cube_name);
+    CREATE INDEX IF NOT EXISTS idx_execution_log_created_at
+        ON execution_log(created_at DESC);
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -413,11 +432,40 @@ def get_quality_overview() -> dict:
             )
             cube_queries = {row["cube_name"]: dict(row) for row in cur.fetchall()}
 
-    cube_names = sorted(set(cube_cache) | set(cube_queries))
+            cur.execute("SELECT COUNT(*) AS total FROM execution_log")
+            total_executions = cur.fetchone()["total"]
+
+            cur.execute(
+                """
+                SELECT status, COUNT(*) AS count
+                FROM execution_log
+                GROUP BY status
+                ORDER BY status
+                """
+            )
+            execution_statuses = {row["status"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(
+                """
+                SELECT cube_name,
+                       COUNT(*) AS executions,
+                       COUNT(*) FILTER (WHERE status = 'success') AS execution_success,
+                       COUNT(*) FILTER (WHERE status = 'no_data') AS no_data,
+                       COUNT(*) FILTER (WHERE status = 'failed') AS execution_failed
+                FROM execution_log
+                WHERE cube_name IS NOT NULL
+                GROUP BY cube_name
+                ORDER BY cube_name
+                """
+            )
+            cube_executions = {row["cube_name"]: dict(row) for row in cur.fetchall()}
+
+    cube_names = sorted(set(cube_cache) | set(cube_queries) | set(cube_executions))
     cubes = []
     for cube_name in cube_names:
         cached = cube_cache.get(cube_name, {})
         queried = cube_queries.get(cube_name, {})
+        executed = cube_executions.get(cube_name, {})
         total_cached = cached.get("total", 0) or 0
         flagged = cached.get("flagged", 0) or 0
         verified = cached.get("verified", 0) or 0
@@ -429,6 +477,10 @@ def get_quality_overview() -> dict:
             quality_score += min(20, round((verified / total_cached) * 20))
         if queries:
             quality_score -= min(30, round((failures / queries) * 30))
+        executions = executed.get("executions", 0) or 0
+        execution_issues = (executed.get("no_data", 0) or 0) + (executed.get("execution_failed", 0) or 0)
+        if executions:
+            quality_score -= min(35, round((execution_issues / executions) * 35))
         quality_score = max(0, min(100, quality_score))
 
         cubes.append({
@@ -445,6 +497,10 @@ def get_quality_overview() -> dict:
             "failed": queried.get("failed", 0) or 0,
             "needs_clarification": queried.get("needs_clarification", 0) or 0,
             "not_answerable": queried.get("not_answerable", 0) or 0,
+            "executions": executions,
+            "execution_success": executed.get("execution_success", 0) or 0,
+            "no_data": executed.get("no_data", 0) or 0,
+            "execution_failed": executed.get("execution_failed", 0) or 0,
             "quality_score": quality_score,
         })
 
@@ -466,6 +522,19 @@ def get_quality_overview() -> dict:
             "miss_rate": rate(miss_like),
             "validation_block_rate": rate(validation_blocks),
             "failed_rate": rate(failed),
+        },
+        "execution_log": {
+            "total": total_executions,
+            "statuses": execution_statuses,
+            "success_rate": round(
+                (execution_statuses.get("success", 0) / total_executions) * 100, 1
+            ) if total_executions else 0.0,
+            "no_data_rate": round(
+                (execution_statuses.get("no_data", 0) / total_executions) * 100, 1
+            ) if total_executions else 0.0,
+            "failed_rate": round(
+                (execution_statuses.get("failed", 0) / total_executions) * 100, 1
+            ) if total_executions else 0.0,
         },
         "cubes": cubes,
     }
@@ -597,6 +666,41 @@ def log_query(
             conn.commit()
     except Exception as exc:
         logger.warning("log_query failed (non-fatal): %s", exc)
+
+
+def log_execution(
+    *,
+    question: str | None,
+    pair_id: str | None,
+    cube_name: str | None,
+    status: str,
+    attempt: str,
+    row_count: int = 0,
+    error: str | None = None,
+) -> None:
+    """Record each SSAS execution for no-data and failure quality metrics."""
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO execution_log
+                        (question, pair_id, cube_name, status, attempt, row_count, error)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        question or None,
+                        pair_id or None,
+                        cube_name or None,
+                        status,
+                        attempt,
+                        row_count,
+                        error,
+                    ),
+                )
+            conn.commit()
+    except Exception as exc:
+        logger.warning("log_execution failed (non-fatal): %s", exc)
 
 
 def get_query_log(

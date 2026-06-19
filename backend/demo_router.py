@@ -21,7 +21,11 @@ from qdrant_client.models import PointIdsList
 from backend.config import settings
 from backend.agents.query_resolver import QueryResolverAgent
 from backend.db.database import (
-    save_pairs, save_feedback, save_feedback_by_id, get_pair_by_id,
+    get_pair_by_id,
+    log_execution,
+    save_feedback,
+    save_feedback_by_id,
+    save_pairs,
 )
 from backend.models.schemas import QAPair
 from backend.agents.mdx_agent import MDXGeneratorAgent
@@ -268,6 +272,16 @@ def execute_mdx(req: ExecuteRequest):
         except Exception as exc:
             cache_updated = False
             logger.warning("Validated MDX cache update failed: %s", exc)
+
+    log_execution(
+        question=req.question,
+        pair_id=req.pair_id,
+        cube_name=cube,
+        status=result.status,
+        attempt=result.attempt,
+        row_count=result.row_count,
+        error=result.error,
+    )
 
     return ExecuteResponse(
         status=result.status,
