@@ -47,8 +47,13 @@ from backend.services.mdx_patcher import patch_years, patch_entities_llm
 from backend.services.mdx_template import (
     make_template, fill_template, has_placeholders, extract_entity_map
 )
+from backend.services.member_grounding import MemberGroundingError
 from backend.services.schema_provider import get_schema_provider
-from backend.services.question_guard import quick_validate_question, route_question_to_cube
+from backend.services.question_guard import (
+    QuestionGuardResult,
+    quick_validate_question,
+    route_question_to_cube,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +149,34 @@ class QueryResolverAgent:
                 matched_q=matched_q,
             )
 
-        return self._full_miss(question, routing.suggested_cube or cube_name, t0, best_score, matched_q)
+        try:
+            return self._full_miss(
+                question,
+                routing.suggested_cube or cube_name,
+                t0,
+                best_score,
+                matched_q,
+            )
+        except MemberGroundingError as exc:
+            validation = QuestionGuardResult(
+                status="needs_clarification",
+                valid=False,
+                message=str(exc),
+                suggested_cube=routing.suggested_cube or cube_name,
+                suggestions=[
+                    "Open Admin → Cube Explorer and inspect exact member captions.",
+                    "Put the exact member value in quotes in your question.",
+                    "Or remove the member filter and start with an aggregate question.",
+                ],
+            )
+            return self._validation_result(
+                question=question,
+                cube_name=routing.suggested_cube or cube_name,
+                t0=t0,
+                validation=validation,
+                similarity=best_score,
+                matched_q=matched_q,
+            )
 
     # ── Private: candidate handling ───────────────────────────────────────────
 

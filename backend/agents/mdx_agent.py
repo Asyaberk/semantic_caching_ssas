@@ -14,6 +14,11 @@ from openai import OpenAI
 from backend.config import settings
 from backend.mock.cube_formatter import format_cube_for_llm
 from backend.models.schemas import QAPair, ComplexityLevel
+from backend.services.member_grounding import (
+    MemberGroundingError,
+    find_grounded_members,
+    format_grounding_for_prompt,
+)
 from backend.services.schema_provider import SchemaProvider, get_schema_provider
 
 logger = logging.getLogger(__name__)
@@ -108,7 +113,11 @@ class MDXGeneratorAgent:
     def _get_schema_text(self, cube_name: str) -> str:
         """Return formatted schema text, cached per cube name."""
         if cube_name not in self._schema_cache:
-            self._schema_cache[cube_name] = format_cube_for_llm(cube_name, self.provider)
+            self._schema_cache[cube_name] = format_cube_for_llm(
+                cube_name,
+                self.provider,
+                include_members=False,
+            )
         return self._schema_cache[cube_name]
 
     # ── Public API ────────────────────────────────────────────────────────
@@ -128,7 +137,16 @@ class MDXGeneratorAgent:
             RuntimeError: If the LLM call fails or the response cannot be parsed.
         """
         schema_text = self._get_schema_text(cube_name)
-        user_prompt = self._build_prompt(schema_text, question, cube_name)
+        grounding = find_grounded_members(question, cube_name, self.provider)
+        if grounding["unmatched"]:
+            raise MemberGroundingError(grounding["unmatched"])
+        grounding_text = format_grounding_for_prompt(grounding)
+        user_prompt = self._build_prompt(
+            schema_text,
+            question,
+            cube_name,
+            grounding_text=grounding_text,
+        )
 
         # Start Langfuse trace when available
         trace = None
@@ -252,12 +270,20 @@ class MDXGeneratorAgent:
         )
         return parsed
 
-    def _build_prompt(self, schema_text: str, question: str, cube_name: str) -> str:
+    def _build_prompt(
+        self,
+        schema_text: str,
+        question: str,
+        cube_name: str,
+        grounding_text: str = "",
+    ) -> str:
         """Construct the user prompt sent to the LLM."""
         return f"""\
 Below is the schema of the '{cube_name}' SSAS cube:
 
 {schema_text}
+
+{grounding_text}
 
 Write an MDX query that answers the following question:
 "{question}"
@@ -266,7 +292,9 @@ Important:
 - Use only the schema above for cube '{cube_name}'.
 - Keep all user-requested filters and breakdowns. Do not simplify to a grand
   total when the user asked for a country, vessel, customer, date, or ranking.
-- If a member value is needed, use the key/caption style shown in the schema.
+- If a member value is needed, use only an exact unique name from the
+  question-specific member grounding section.
+- If a candidate value is unmatched, do not invent or approximate a member key.
 - Prefer NON EMPTY when putting sets on ROWS.
 
 Return a JSON object with exactly these keys:

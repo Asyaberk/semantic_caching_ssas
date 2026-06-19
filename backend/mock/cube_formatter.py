@@ -9,7 +9,12 @@ format_cube_for_llm() without knowing which data source is active.
 from backend.services.schema_provider import SchemaProvider, get_schema_provider
 
 
-def format_cube_for_llm(cube_name: str, provider: SchemaProvider | None = None) -> str:
+def format_cube_for_llm(
+    cube_name: str,
+    provider: SchemaProvider | None = None,
+    *,
+    include_members: bool = True,
+) -> str:
     """
     Returns a plain-text description of the given cube's schema.
 
@@ -26,7 +31,7 @@ def format_cube_for_llm(cube_name: str, provider: SchemaProvider | None = None) 
 
     dimensions = provider.get_dimensions(cube_name)
     measures   = provider.get_measures(cube_name)
-    members    = provider.get_members(cube_name)
+    members    = provider.get_members(cube_name) if include_members else {}
 
     lines: list[str] = []
 

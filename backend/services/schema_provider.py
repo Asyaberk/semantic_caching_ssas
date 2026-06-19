@@ -75,6 +75,35 @@ class SchemaProvider(ABC):
             return []
         return self.get_hierarchies(cube_name).get(dimension["unique_name"], [])
 
+    def search_members(
+        self,
+        cube_name: str,
+        query: str,
+        dimension_name: str | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Search exact cube members by caption/key text."""
+        members = self.get_members(cube_name)
+        query_text = query.casefold()
+        results: list[dict] = []
+        for dimension, items in members.items():
+            if dimension_name and dimension_name not in dimension:
+                continue
+            for item in items:
+                caption = str(item.get("caption") or "")
+                unique_name = str(
+                    item.get("unique_name") or item.get("member_unique_name") or ""
+                )
+                if query_text in caption.casefold() or query_text in unique_name.casefold():
+                    results.append({
+                        "caption": caption,
+                        "unique_name": unique_name,
+                        "dimension_name": dimension,
+                    })
+                    if len(results) >= limit:
+                        return results
+        return results
+
 
 # ── Mock implementation ──────────────────────────────────────────────────────
 
@@ -252,6 +281,31 @@ class SSASSchemaProvider(SchemaProvider):
             f"/api/v1/metadata/cubes/{cube_name}/dimensions/{dimension_name}/hierarchies"
         )
         return data.get("hierarchies", [])
+
+    def search_members(
+        self,
+        cube_name: str,
+        query: str,
+        dimension_name: str | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        params = {"q": query, "limit": limit}
+        if dimension_name:
+            params["dimensionName"] = dimension_name
+        data = self._get(
+            f"/api/v1/metadata/cubes/{cube_name}/members/search",
+            **params,
+        )
+        return [
+            {
+                "caption": item.get("caption", item.get("name", "")),
+                "unique_name": item.get("uniqueName", ""),
+                "dimension_name": item.get("dimensionName", dimension_name or ""),
+                "hierarchy_name": item.get("hierarchyName", ""),
+                "level_name": item.get("levelName", ""),
+            }
+            for item in data.get("members", [])
+        ]
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────
