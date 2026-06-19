@@ -18,7 +18,7 @@ DIMENSIONS = [
         "caption": "Country",
         "cube_name": "Sales",
         "description": "The country of the customer.",
-        "aliases": ["country", "ulke", "ülke", "region", "bolge", "bölge"],
+        "aliases": ["country", "region"],
         "metadata": {"source": "mock"},
     },
     {
@@ -27,7 +27,7 @@ DIMENSIONS = [
         "caption": "Calendar",
         "cube_name": "Sales",
         "description": "Calendar date hierarchy with year, quarter, and month levels.",
-        "aliases": ["date", "calendar", "year", "month", "tarih", "yil", "yıl", "ay"],
+        "aliases": ["date", "calendar", "year", "month"],
         "metadata": {"source": "mock"},
     },
     {
@@ -36,7 +36,7 @@ DIMENSIONS = [
         "caption": "Product Category",
         "cube_name": "Sales",
         "description": "The top-level category of the product.",
-        "aliases": ["product", "category", "urun", "ürün", "kategori"],
+        "aliases": ["product", "category"],
         "metadata": {"source": "mock"},
     },
     {
@@ -156,7 +156,7 @@ MEASURES = [
         "description": "Total net sales revenue after discounts.",
         "aggregation": "sum",
         "format_string": "#,##0.00",
-        "aliases": ["sales", "revenue", "satis", "satış", "ciro"],
+        "aliases": ["sales", "revenue"],
         "metadata": {"source": "mock"},
     },
     {
@@ -167,7 +167,7 @@ MEASURES = [
         "description": "Total number of orders placed.",
         "aggregation": "count",
         "format_string": "#,##0",
-        "aliases": ["order", "count", "siparis", "sipariş", "adet"],
+        "aliases": ["order", "count"],
         "metadata": {"source": "mock"},
     },
     {

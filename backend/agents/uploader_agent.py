@@ -18,7 +18,7 @@ import logging
 import uuid
 from openai import OpenAI
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, PayloadSchemaType, PointStruct, VectorParams
 
 from backend.config import settings
 from backend.models.schemas import QAPair
@@ -66,6 +66,7 @@ class QdrantUploaderAgent:
         existing = [c.name for c in self.qdrant.get_collections().collections]
         if self.collection in existing:
             logger.info("Collection '%s' already exists — skipping creation.", self.collection)
+            self._ensure_payload_indexes()
             return
 
         logger.info("Creating collection '%s'.", self.collection)
@@ -77,6 +78,23 @@ class QdrantUploaderAgent:
             ),
         )
         logger.info("Collection '%s' created successfully.", self.collection)
+        self._ensure_payload_indexes()
+
+    def _ensure_payload_indexes(self) -> None:
+        """Ensure filterable payload indexes required by resolver searches exist."""
+        try:
+            self.qdrant.create_payload_index(
+                collection_name=self.collection,
+                field_name="cube_name",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            logger.info("Qdrant payload index ensured for cube_name.")
+        except Exception as exc:
+            message = str(exc).lower()
+            if "already exists" in message or "exists" in message:
+                logger.info("Qdrant payload index cube_name already exists.")
+            else:
+                logger.warning("Could not ensure Qdrant payload index cube_name: %s", exc)
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -120,7 +138,7 @@ class QdrantUploaderAgent:
             batch = pairs[batch_start: batch_start + batch_size]
 
             try:
-                # Filter out near-duplicates before uploading (Seçenek 3)
+                # Filter out near-duplicates before uploading.
                 points: list[PointStruct] = []
                 for pair in batch:
                     vector = self._embed(pair.question)

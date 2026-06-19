@@ -48,12 +48,12 @@ CRITICAL — Dimension members on ROWS:
 - Attribute hierarchies (single-level) do NOT support .Members in ON ROWS.
 - Only user hierarchies (multi-level, shown in schema) support .Members.
 - For country/company/goods breakdowns, use WHERE clause filtering instead:
-    WHERE [AccruementCompany].[CountryName].&[Türkiye]
+    WHERE [AccruementCompany].[CountryName].&[<exact member key from schema>]
 - To list members of a user hierarchy: [Dim].[HierarchyName].Members ON ROWS
 
 CRITICAL — Member key values:
-- Member keys in this SSAS instance use local language (e.g. Türkiye not Turkey).
-- Always use the member key exactly as it appears in the cube schema.
+- Always use member keys exactly as they appear in the cube schema.
+- Do not translate, normalize, or invent member keys.
 """
 
 

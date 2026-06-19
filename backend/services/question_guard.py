@@ -14,34 +14,30 @@ from dataclasses import dataclass, field
 from backend.services.schema_provider import SchemaProvider
 
 
-_WORD_RE = re.compile(r"[\wğüşöçıİĞÜŞÖÇ]+", re.UNICODE)
+_WORD_RE = re.compile(r"[A-Za-z0-9_]+", re.UNICODE)
 _CAMEL_RE = re.compile(r"(?<!^)(?=[A-Z])")
 _YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 
 _STOP_WORDS = {
     "a", "an", "and", "are", "as", "at", "by", "for", "from", "how", "in",
     "is", "me", "of", "on", "show", "the", "there", "to", "total", "what",
-    "with",
-    "adet", "bir", "bu", "da", "de", "en", "göre", "hangi", "kaç", "kac",
-    "kadar", "listele", "mi", "mı", "mu", "mü", "ne", "nedir", "olan",
-    "olarak", "toplam", "var", "ve", "ya", "yıl", "yili", "yılı",
+    "with", "which", "year",
 }
 
 _CHATTER = {
-    "hi", "hello", "hey", "merhaba", "selam", "test", "deneme", "asdf",
-    "lorem", "naber", "nasılsın", "nasilsin",
+    "hi", "hello", "hey", "test", "asdf", "lorem",
 }
 
 _CUBE_HINTS = {
-    "cubeAccruement": {"accruement", "accrual", "tahakkuk", "invoice", "vat", "grt"},
-    "cubeCreditDebit": {"credit", "debit", "alacak", "borç", "borc", "movement"},
-    "cubeDwellTimeRoro": {"dwell", "roro", "ro", "vehicle", "bekleme"},
-    "cubeGangPoint": {"gang", "point", "worker", "işçi", "isci", "puan"},
+    "cubeAccruement": {"accruement", "accrual", "invoice", "vat", "grt"},
+    "cubeCreditDebit": {"credit", "debit", "movement"},
+    "cubeDwellTimeRoro": {"dwell", "roro", "ro", "vehicle"},
+    "cubeGangPoint": {"gang", "point", "worker"},
     "cubeGeneralJobOrders": {"general", "job", "order", "operation", "work"},
     "cubeOtherJobOrders": {"other", "equipment", "service", "job", "order"},
     "cubeVesselJobOrder": {"vessel", "ship", "job", "order", "crane", "transport"},
     "cubeVesselOrder": {"vessel", "ship", "berth", "berthing", "moorage", "order"},
-    "cubeWaiting": {"waiting", "wait", "vessel", "ship", "equipment", "bekleme"},
+    "cubeWaiting": {"waiting", "wait", "vessel", "ship", "equipment"},
 }
 
 
@@ -58,7 +54,7 @@ class QuestionGuardResult:
 
 def tokenize(text: str) -> set[str]:
     """Return normalized searchable tokens."""
-    normalized = text.replace("İ", "i").casefold()
+    normalized = text.casefold()
     words = set(_WORD_RE.findall(normalized))
     expanded: set[str] = set()
     for word in words:
@@ -78,16 +74,16 @@ def quick_validate_question(question: str) -> QuestionGuardResult | None:
     meaningful = [t for t in tokens if t not in _STOP_WORDS and not _YEAR_RE.fullmatch(t)]
 
     if not cleaned:
-        return _needs_clarification("Lütfen SSAS cube verileriyle ilgili bir iş sorusu yazın.")
+        return _needs_clarification("Please ask a business question about the available SSAS cube data.")
 
     if len(cleaned) < 8 or tokens <= _CHATTER:
         return _needs_clarification(
-            "Soru çok kısa veya iş bağlamı taşımıyor. Hangi metriği, hangi kırılımı ve mümkünse yılı yazın."
+            "The question is too short or has no business context. Include a metric, a breakdown, and a time period when relevant."
         )
 
     if not meaningful:
         return _needs_clarification(
-            "Soru yeterince açık değil. Örn: “2025 Türkiye toplam tahakkuk nedir?” gibi metrik + filtre belirtin."
+            "The question is not specific enough. Add a metric and at least one useful filter, such as year, country, vessel, customer, or equipment."
         )
 
     return None
@@ -118,18 +114,18 @@ def route_question_to_cube(
             return QuestionGuardResult(
                 status="ok",
                 valid=True,
-                message="Cube şeması okunamadı; seçilen cube ile devam ediliyor.",
+                message="Cube schema could not be read; continuing with the selected cube.",
                 suggested_cube=requested_cube,
                 confidence=0.4,
             )
-        return _needs_clarification("Cube şeması şu an okunamadı; lütfen daha sonra tekrar deneyin.")
+        return _needs_clarification("Cube schema is currently unavailable. Please try again later.")
 
     known_names = {c.get("name") for c in cubes if c.get("name")}
     if requested_cube and requested_cube not in known_names:
         return QuestionGuardResult(
             status="not_answerable",
             valid=False,
-            message=f"“{requested_cube}” adında bilinen bir cube yok.",
+            message=f"Unknown cube: {requested_cube}.",
             suggestions=_generic_suggestions(),
         )
 
@@ -139,7 +135,7 @@ def route_question_to_cube(
         return QuestionGuardResult(
             status="ok",
             valid=True,
-            message="Seçilen cube ile devam ediliyor.",
+            message="Continuing with the selected cube.",
             suggested_cube=requested_cube,
             confidence=min(1.0, score[0] / 8) if score else 0.5,
             matched_terms=score[1] if score else [],
@@ -154,8 +150,8 @@ def route_question_to_cube(
             status="not_answerable",
             valid=False,
             message=(
-                "Bu sorunun mevcut SSAS cube şemasında karşılığını bulamadım. "
-                "Cube verileriyle ilişkili metrik, tarih, ülke, gemi, sipariş veya bekleme gibi alanları belirtin."
+                "I could not map this question to the current SSAS cube schema. "
+                "Use terms that exist in the cube data, such as a metric, date, country, vessel, order, equipment, or waiting time."
             ),
             suggestions=_generic_suggestions(),
         )
@@ -165,8 +161,8 @@ def route_question_to_cube(
             status="needs_clarification",
             valid=False,
             message=(
-                "Soru hangi cube/veri alanına ait yeterince net değil. "
-                f"En yakın adaylar: {', '.join(name for name, _ in ranked[:3])}."
+                "The question is not clear enough to choose a cube safely. "
+                f"Closest candidates: {', '.join(name for name, _ in ranked[:3])}."
             ),
             suggestions=_generic_suggestions(),
         )
@@ -174,7 +170,7 @@ def route_question_to_cube(
     return QuestionGuardResult(
         status="ok",
         valid=True,
-        message=f"Soru {top_cube} cube'una yönlendirildi.",
+        message=f"Question routed to {top_cube}.",
         suggested_cube=top_cube,
         confidence=min(1.0, top_score / 8),
         matched_terms=top_terms,
@@ -247,7 +243,7 @@ def _needs_clarification(message: str) -> QuestionGuardResult:
 
 def _generic_suggestions() -> list[str]:
     return [
-        "Metrik yazın: count, amount, waiting time, accruement gibi.",
-        "Kırılım/filtre ekleyin: ülke, gemi, müşteri, ekipman veya yıl.",
-        "Örnek: “2025 Türkiye toplam tahakkuk nedir?”",
+        "Include a metric, such as count, amount, waiting time, or accruement.",
+        "Add a filter or breakdown, such as year, country, vessel, customer, or equipment.",
+        "Example: \"What is the total accruement count for Turkey in 2025?\"",
     ]

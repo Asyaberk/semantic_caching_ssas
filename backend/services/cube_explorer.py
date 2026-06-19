@@ -22,15 +22,15 @@ def validate_readonly_mdx(mdx: str, cube_name: str) -> str:
     """Validate that an admin console query is read-only and targets one cube."""
     cleaned = mdx.strip()
     if not cleaned:
-        raise ValueError("MDX boş olamaz.")
+        raise ValueError("MDX cannot be empty.")
     if not re.match(r"^(SELECT|WITH)\b", cleaned, re.IGNORECASE):
-        raise ValueError("Cube Explorer yalnızca SELECT veya WITH sorgularını çalıştırır.")
+        raise ValueError("Cube Explorer only allows SELECT or WITH queries.")
     query_cube = extract_cube_name(cleaned)
     if not query_cube:
-        raise ValueError("MDX sorgusunda FROM [cube] bölümü bulunamadı.")
+        raise ValueError("The MDX query must include a FROM [cube] clause.")
     if query_cube != cube_name:
         raise ValueError(
-            f"Seçilen cube ({cube_name}) ile MDX cube'u ({query_cube}) uyuşmuyor."
+            f"The selected cube ({cube_name}) does not match the MDX cube ({query_cube})."
         )
     return cleaned
 

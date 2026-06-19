@@ -68,9 +68,9 @@ def _cube_or_404(cube_name: str) -> dict:
             None,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"SSAS metadata alınamadı: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Could not read SSAS metadata: {exc}") from exc
     if not cube:
-        raise HTTPException(status_code=404, detail="Cube bulunamadı.")
+        raise HTTPException(status_code=404, detail="Cube not found.")
     return cube
 
 
@@ -87,7 +87,7 @@ def _execute_bridge(mdx: str) -> dict:
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=422, detail=exc.response.text[:1000]) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"SSAS bağlantı hatası: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"SSAS connection error: {exc}") from exc
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ def list_cubes():
         cubes = _schema_provider.get_cubes()
         return {"items": cubes, "total": len(cubes), "data_source": settings.ssas_data_source}
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"SSAS cube listesi alınamadı: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Could not read the SSAS cube list: {exc}") from exc
 
 
 @router.get("/cubes/{cube_name}/schema")
@@ -110,7 +110,7 @@ def cube_schema(cube_name: str):
         dimensions = _schema_provider.get_dimensions(cube_name)
         measures = _schema_provider.get_measures(cube_name)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Cube şeması alınamadı: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Could not read the cube schema: {exc}") from exc
     return {"cube": cube, "dimensions": dimensions, "measures": measures}
 
 
@@ -127,11 +127,11 @@ def cube_hierarchies(cube_name: str, dimension_name: str = Query(...)):
         None,
     )
     if not dimension:
-        raise HTTPException(status_code=404, detail="Dimension bulunamadı.")
+        raise HTTPException(status_code=404, detail="Dimension not found.")
     try:
         items = _schema_provider.get_dimension_hierarchies(cube_name, dimension["name"])
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Hierarchy listesi alınamadı: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Could not read the hierarchy list: {exc}") from exc
     return {"dimension": dimension, "items": items, "total": len(items)}
 
 
@@ -147,10 +147,10 @@ def preview_members(
     _cube_or_404(cube_name)
     hierarchies = _schema_provider.get_dimension_hierarchies(cube_name, dimension_name)
     if hierarchy_unique_name not in {item.get("uniqueName") or item.get("unique_name") for item in hierarchies}:
-        raise HTTPException(status_code=400, detail="Hierarchy bu dimension içinde bulunamadı.")
+        raise HTTPException(status_code=400, detail="Hierarchy not found in this dimension.")
     measures = _schema_provider.get_measures(cube_name)
     if measure_unique_name not in {item.get("unique_name") for item in measures}:
-        raise HTTPException(status_code=400, detail="Measure bu cube içinde bulunamadı.")
+        raise HTTPException(status_code=400, detail="Measure not found in this cube.")
 
     mdx = build_member_preview_mdx(
         cube_name=cube_name,
@@ -281,11 +281,11 @@ async def add_to_cache(req: AddToCacheRequest):
     Save a failed / patched query as a new cached pair in PostgreSQL + Qdrant.
     Called from the admin Query Log UI.
     """
-    import uuid as _uuid
     from backend.agents.uploader_agent import QdrantUploaderAgent
 
+    pair_id = QdrantUploaderAgent._make_id(req.cube_name, req.question)
     pair = QAPair(
-        id        = str(_uuid.uuid4()),
+        id        = pair_id,
         cube_name = req.cube_name,
         question  = req.question,
         mdx       = req.mdx,
@@ -293,9 +293,9 @@ async def add_to_cache(req: AddToCacheRequest):
     try:
         saved = save_pairs([pair])
         uploader = QdrantUploaderAgent()
-        uploader.upload([pair])
+        uploader.upload([pair], force=True)
         logger.info("Admin: added '%s' to cache (cube=%s).", req.question, req.cube_name)
-        return {"saved": saved > 0, "pair_id": pair.id}
+        return {"saved": saved > 0, "pair_id": pair_id}
     except Exception as exc:
         logger.error("add-to-cache failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))

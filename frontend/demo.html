@@ -55,6 +55,34 @@
     header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
     header p  { color: var(--muted); font-size: 0.95rem; max-width: 480px; margin: 0 auto; }
 
+    .guide-grid {
+      width: 100%;
+      max-width: 720px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: -18px 0 24px;
+    }
+    .guide-card {
+      background: rgba(255,255,255,.84);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 1px 8px rgba(15,23,42,.04);
+    }
+    .guide-card strong {
+      display: block;
+      font-size: .82rem;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .guide-card span {
+      display: block;
+      font-size: .78rem;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
     /* ── Search card ── */
     .search-card {
       width: 100%;
@@ -296,8 +324,23 @@
 <header>
   <div class="badge">🔍 Semantic Cache</div>
   <h1>Cache Demo</h1>
-  <p>Ask a business question. If it's been asked before, the answer comes from cache instantly. Otherwise, the LLM generates it — and caches it for next time.</p>
+  <p>Ask a clear business question. The system validates the prompt, routes it to the most likely SSAS cube, and uses the semantic cache before asking the LLM.</p>
 </header>
+
+<section class="guide-grid" aria-label="How the demo works">
+  <div class="guide-card">
+    <strong>1. Ask clearly</strong>
+    <span>Include a metric plus filters such as year, country, vessel, customer, or equipment.</span>
+  </div>
+  <div class="guide-card">
+    <strong>2. Cache first</strong>
+    <span>Matches, templates, and safe patches avoid unnecessary LLM calls and keep answers traceable.</span>
+  </div>
+  <div class="guide-card">
+    <strong>3. Validate on SSAS</strong>
+    <span>Run the generated MDX only when the prompt maps to real cube schema.</span>
+  </div>
+</section>
 
 <!-- Search -->
   <div class="search-card">
@@ -476,25 +519,25 @@
     currentMdx    = '';
 
     const title = d.status === 'not_answerable'
-      ? 'Bu soruya cube verilerinde karşılık bulamadım'
-      : 'Soruyu biraz netleştirmem gerekiyor';
+      ? 'This question does not match the available cube data'
+      : 'Please make the question more specific';
     const suggestions = (d.suggestions || []).map(s => `<li>${escHtml(s)}</li>`).join('');
     const matched = d.matched_question ? `
       <div style="font-size:.78rem;color:#9a3412;margin-top:10px">
-        En yakın cache sorusu: “${escHtml(d.matched_question)}”
+        Closest cached question: “${escHtml(d.matched_question)}”
         ${d.similarity != null ? `(${(d.similarity * 100).toFixed(1)}%)` : ''}
       </div>` : '';
 
     document.getElementById('result').innerHTML = `
       <div class="prompt-feedback">
         <strong>${escHtml(title)}</strong>
-        <div style="margin-top:6px">${escHtml(d.feedback_message || 'Soru mevcut cube şemasıyla yeterince eşleşmedi.')}</div>
+        <div style="margin-top:6px">${escHtml(d.feedback_message || 'The question did not match the current cube schema closely enough.')}</div>
         ${suggestions ? `<ul>${suggestions}</ul>` : ''}
         ${matched}
         <div class="prompt-examples">
-          <button onclick="setQ('2025 Türkiye toplam tahakkuk nedir?'); ask()">2025 Türkiye tahakkuk</button>
-          <button onclick="setQ('2024 gemi bekleme sürelerini göster'); ask()">Gemi bekleme 2024</button>
-          <button onclick="setQ('2025 toplam vessel order sayısı kaç?'); ask()">Vessel order 2025</button>
+          <button onclick="setQ('What is the total accruement count for Turkey in 2025?'); ask()">Accruement 2025</button>
+          <button onclick="setQ('Show vessel waiting counts for 2024'); ask()">Vessel waiting 2024</button>
+          <button onclick="setQ('How many vessel orders were there in 2025?'); ask()">Vessel orders 2025</button>
         </div>
       </div>
     `;
@@ -521,21 +564,21 @@
       const data = await res.json();
 
       if (!res.ok || data.status === 'failed') {
-        const message = data.detail || data.error || 'SSAS sorgusu çalıştırılamadı.';
-        if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">Hata: ${escHtml(message)}</div>`;
+        const message = data.detail || data.error || 'The SSAS query could not be executed.';
+        if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">Error: ${escHtml(message)}</div>`;
         return;
       }
 
       currentMdx = data.executed_mdx || currentMdx;
       const attemptLabels = {
-        original: 'Orijinal MDX doğrulandı',
-        year_fix: 'Yıl filtresi düzeltilerek doğrulandı',
-        llm_repair: 'MDX onarıldı ve SSAS üzerinde doğrulandı',
+        original: 'Original MDX validated',
+        year_fix: 'Year filter corrected and validated',
+        llm_repair: 'MDX repaired and validated on SSAS',
       };
-      const validationNote = `<div style="font-size:.75rem;color:#047857;margin-top:8px">✓ ${escHtml(attemptLabels[data.attempt] || 'SSAS üzerinde doğrulandı')}</div>`;
+      const validationNote = `<div style="font-size:.75rem;color:#047857;margin-top:8px">✓ ${escHtml(attemptLabels[data.attempt] || 'Validated on SSAS')}</div>`;
 
       if (data.status === 'no_data') {
-        if (out) out.innerHTML = `${validationNote}<div style="font-size:.8rem;color:var(--muted);margin-top:8px">Sorgu geçerli, fakat seçilen filtreler için veri bulunamadı.</div>`;
+        if (out) out.innerHTML = `${validationNote}<div style="font-size:.8rem;color:var(--muted);margin-top:8px">The query is valid, but no data was found for the selected filters.</div>`;
         return;
       }
 
@@ -558,7 +601,7 @@
       html += '</tbody></table></div>';
       html += `<div class="ssas-meta">${data.row_count} row(s)${data.elapsed_ms ? ' &middot; SSAS: ' + data.elapsed_ms + 'ms' : ''}</div>`;
       html += validationNote;
-      if (data.cache_updated) html += '<div style="font-size:.73rem;color:var(--muted);margin-top:4px">Doğrulanmış MDX cache kaydına işlendi.</div>';
+      if (data.cache_updated) html += '<div style="font-size:.73rem;color:var(--muted);margin-top:4px">The validated MDX was written back to the cache.</div>';
 
       if (out) out.innerHTML = html;
     } catch(e) {

@@ -288,7 +288,7 @@
     <div class="tab-page" id="tab-cubes">
       <div class="page-header">
         <h1>Cube Explorer</h1>
-        <p>SSAS küplerini, measure ve hierarchy yapılarını inceleyin; member verilerini güvenli limitlerle görüntüleyin.</p>
+        <p>Inspect live SSAS cubes, dimensions, measures, hierarchies, and bounded member previews before trusting or editing cached MDX.</p>
       </div>
 
       <div class="card">
@@ -299,11 +299,19 @@
           </div>
           <div>
             <div class="filter-label">Cube</div>
-            <select id="explorerCube" onchange="loadCubeSchema()"><option>Yükleniyor…</option></select>
+            <select id="explorerCube" onchange="loadCubeSchema()"><option>Loading…</option></select>
           </div>
-          <button class="btn btn-ghost" onclick="loadCubes(true)">Yenile</button>
+          <button class="btn btn-ghost" onclick="loadCubes(true)">Refresh</button>
           <span id="explorerStatus" style="font-size:.8rem;color:var(--muted)"></span>
         </div>
+      </div>
+
+      <div class="card" style="border-color:rgba(67,97,238,.18);background:linear-gradient(135deg,#ffffff,#f8faff)">
+        <div class="card-title">How to use this safely</div>
+        <p style="font-size:.86rem;color:var(--muted);line-height:1.55">
+          Use schema inspection before approving cached MDX. Member previews are bounded, the MDX console is read-only,
+          and cube mismatches are rejected instead of silently switching data sources.
+        </p>
       </div>
 
       <div class="stats-row">
@@ -316,15 +324,15 @@
       <div class="schema-grid">
         <div class="card schema-panel">
           <div class="card-title">Dimensions</div>
-          <div class="schema-list" id="dimensionList"><div class="explorer-message">Bir cube seçin.</div></div>
+          <div class="schema-list" id="dimensionList"><div class="explorer-message">Select a cube.</div></div>
         </div>
         <div class="card schema-panel">
           <div class="card-title">Hierarchies &amp; levels</div>
-          <div class="schema-list" id="hierarchyList"><div class="explorer-message">Bir dimension seçin.</div></div>
+          <div class="schema-list" id="hierarchyList"><div class="explorer-message">Select a dimension.</div></div>
         </div>
         <div class="card schema-panel">
           <div class="card-title">Measures</div>
-          <div class="schema-list" id="measureList"><div class="explorer-message">Bir cube seçin.</div></div>
+          <div class="schema-list" id="measureList"><div class="explorer-message">Select a cube.</div></div>
         </div>
       </div>
 
@@ -339,21 +347,21 @@
             <div class="filter-label">Row limit</div>
             <select id="memberLimit"><option>50</option><option selected>100</option><option>200</option><option>500</option></select>
           </div>
-          <button class="btn btn-primary" id="loadMembersBtn" onclick="loadMemberPreview()" disabled>Member verisini getir</button>
-          <input id="memberFilter" placeholder="Gelen satırlarda ara" oninput="filterExplorerRows()" />
+          <button class="btn btn-primary" id="loadMembersBtn" onclick="loadMemberPreview()" disabled>Load member data</button>
+          <input id="memberFilter" placeholder="Filter returned rows" oninput="filterExplorerRows()" />
         </div>
-        <div id="memberResult" style="margin-top:16px"><div class="explorer-message">Önce bir hierarchy seçin.</div></div>
+        <div id="memberResult" style="margin-top:16px"><div class="explorer-message">Choose a hierarchy first.</div></div>
       </div>
 
       <div class="card">
         <div class="card-title">Read-only MDX console</div>
-        <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Sorgu aynen çalıştırılır; otomatik onarım veya filtre kaldırma uygulanmaz. Sonuç en fazla 500 satır gösterir.</p>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">The query runs exactly as written. No automatic repair, fallback aggregate, or filter removal is applied. Results are capped at 500 rows.</p>
         <textarea id="explorerMdx" class="query-editor" spellcheck="false" placeholder="SELECT ... FROM [cubeName]"></textarea>
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="runExplorerMdx()">MDX çalıştır</button>
-          <button class="btn btn-ghost" onclick="usePreviewMdx()">Preview MDX'i editöre al</button>
+          <button class="btn btn-primary" onclick="runExplorerMdx()">Run MDX</button>
+          <button class="btn btn-ghost" onclick="usePreviewMdx()">Use preview MDX</button>
         </div>
-        <div id="consoleResult" style="margin-top:16px"><div class="explorer-message">Henüz sorgu çalıştırılmadı.</div></div>
+        <div id="consoleResult" style="margin-top:16px"><div class="explorer-message">No query has been run yet.</div></div>
       </div>
     </div>
 
@@ -527,7 +535,7 @@
   async function explorerFetch(url, options) {
     const res = await fetch(url, options);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'İstek başarısız oldu.');
+    if (!res.ok) throw new Error(data.detail || 'Request failed.');
     return data;
   }
 
@@ -539,7 +547,7 @@
 
   async function loadCubes(force = false) {
     if (explorer.loaded && !force) return;
-    setExplorerStatus('Cube listesi yükleniyor…');
+    setExplorerStatus('Loading cube list…');
     try {
       const data = await explorerFetch('/admin/cubes');
       explorer.cubes = data.items || [];
@@ -552,7 +560,7 @@
         `<option value="${escHtml(c.name)}">${escHtml(c.caption || c.name)}</option>`
       ).join('');
       if (previous && explorer.cubes.some(c => c.name === previous)) select.value = previous;
-      setExplorerStatus(`${explorer.cubes.length} cube bulundu.`);
+      setExplorerStatus(`${explorer.cubes.length} cube(s) found.`);
       if (explorer.cubes.length) await loadCubeSchema();
     } catch (e) {
       setExplorerStatus(e.message, true);
@@ -562,10 +570,10 @@
   async function loadCubeSchema() {
     const cube = document.getElementById('explorerCube').value;
     if (!cube) return;
-    setExplorerStatus(`${cube} şeması yükleniyor…`);
-    document.getElementById('dimensionList').innerHTML = '<div class="explorer-message">Yükleniyor…</div>';
-    document.getElementById('hierarchyList').innerHTML = '<div class="explorer-message">Bir dimension seçin.</div>';
-    document.getElementById('measureList').innerHTML = '<div class="explorer-message">Yükleniyor…</div>';
+    setExplorerStatus(`Loading ${cube} schema…`);
+    document.getElementById('dimensionList').innerHTML = '<div class="explorer-message">Loading…</div>';
+    document.getElementById('hierarchyList').innerHTML = '<div class="explorer-message">Select a dimension.</div>';
+    document.getElementById('measureList').innerHTML = '<div class="explorer-message">Loading…</div>';
     document.getElementById('loadMembersBtn').disabled = true;
     explorer.hierarchies = [];
     explorer.hierarchyIndex = -1;
@@ -584,13 +592,13 @@
         <button class="schema-item" id="dimensionItem${i}" onclick="selectDimension(${i})">
           <div class="schema-item-title">${escHtml(d.caption || d.name)}</div>
           <div class="schema-item-meta">${escHtml(d.unique_name)} · ${d.hierarchy_count || 0} hierarchy</div>
-        </button>`).join('') || '<div class="explorer-message">Dimension bulunamadı.</div>';
+        </button>`).join('') || '<div class="explorer-message">No dimensions found.</div>';
 
       document.getElementById('measureList').innerHTML = measures.map((m, i) => `
         <button class="schema-item" onclick="selectMeasure(${i})">
           <div class="schema-item-title">${escHtml(m.caption || m.name)}</div>
           <div class="schema-item-meta">${escHtml(m.unique_name)} · ${escHtml(m.aggregation || '—')}</div>
-        </button>`).join('') || '<div class="explorer-message">Measure bulunamadı.</div>';
+        </button>`).join('') || '<div class="explorer-message">No measures found.</div>';
 
       document.getElementById('memberMeasure').innerHTML = measures.map((m, i) =>
         `<option value="${i}">${escHtml(m.caption || m.name)}</option>`
@@ -602,7 +610,7 @@
       }
       const firstDimension = dimensions.findIndex(d => d.name !== 'Measures');
       if (firstDimension >= 0) await selectDimension(firstDimension);
-      setExplorerStatus(`${cube} hazır.`);
+      setExplorerStatus(`${cube} is ready.`);
     } catch (e) {
       setExplorerStatus(e.message, true);
     }
@@ -615,7 +623,7 @@
     explorer.dimensionIndex = index;
     document.querySelectorAll('#dimensionList .schema-item').forEach((el, i) =>
       el.classList.toggle('active', i === index));
-    document.getElementById('hierarchyList').innerHTML = '<div class="explorer-message">Hierarchy bilgisi yükleniyor…</div>';
+    document.getElementById('hierarchyList').innerHTML = '<div class="explorer-message">Loading hierarchy metadata…</div>';
     document.getElementById('loadMembersBtn').disabled = true;
     explorer.hierarchyIndex = -1;
     try {
@@ -630,7 +638,7 @@
           <div class="schema-item-meta">${escHtml(h.uniqueName || h.unique_name || '')}</div>
           <div class="level-chips">${levels.map(l => `<span class="level-chip">${escHtml(l.caption || l.name)}${l.cardinality != null ? ' · ' + l.cardinality : ''}</span>`).join('')}</div>
         </button>`;
-      }).join('') || '<div class="explorer-message">Hierarchy bulunamadı.</div>';
+      }).join('') || '<div class="explorer-message">No hierarchies found.</div>';
       if (explorer.hierarchies.length) selectHierarchy(0);
     } catch (e) {
       document.getElementById('hierarchyList').innerHTML = `<div class="explorer-message" style="color:var(--red)">${escHtml(e.message)}</div>`;
@@ -642,7 +650,7 @@
     document.querySelectorAll('#hierarchyList .schema-item').forEach((el, i) =>
       el.classList.toggle('active', i === index));
     document.getElementById('loadMembersBtn').disabled = false;
-    document.getElementById('memberResult').innerHTML = '<div class="explorer-message">Seçili hierarchy için veriyi getirebilirsiniz.</div>';
+    document.getElementById('memberResult').innerHTML = '<div class="explorer-message">You can now load data for the selected hierarchy.</div>';
   }
 
   function selectMeasure(index) {
@@ -656,7 +664,7 @@
     const measure = explorer.schema?.measures?.[Number(document.getElementById('memberMeasure').value)];
     if (!cube || !dimension || !hierarchy || !measure) return;
     const target = document.getElementById('memberResult');
-    target.innerHTML = '<div class="explorer-message">SSAS verisi yükleniyor…</div>';
+    target.innerHTML = '<div class="explorer-message">Loading SSAS data…</div>';
     const params = new URLSearchParams({
       dimension_name: dimension.name,
       hierarchy_unique_name: hierarchy.uniqueName || hierarchy.unique_name,
@@ -674,11 +682,11 @@
 
   function filterExplorerRows() {
     if (!explorer.lastPreview) return;
-    const term = document.getElementById('memberFilter').value.trim().toLocaleLowerCase('tr');
+    const term = document.getElementById('memberFilter').value.trim().toLocaleLowerCase('en-US');
     const filtered = {
       ...explorer.lastPreview,
       rows: (explorer.lastPreview.rows || []).filter(row =>
-        Object.values(row).some(value => String(value ?? '').toLocaleLowerCase('tr').includes(term))),
+        Object.values(row).some(value => String(value ?? '').toLocaleLowerCase('en-US').includes(term))),
     };
     renderExplorerResult(filtered, 'memberResult', true);
   }
@@ -692,7 +700,7 @@
     const mdx = document.getElementById('explorerMdx').value.trim();
     const target = document.getElementById('consoleResult');
     if (!mdx) return;
-    target.innerHTML = '<div class="explorer-message">MDX çalıştırılıyor…</div>';
+    target.innerHTML = '<div class="explorer-message">Running MDX…</div>';
     try {
       const data = await explorerFetch(`/admin/cubes/${encodeURIComponent(cube)}/execute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -709,7 +717,7 @@
     const rows = data.rows || [];
     const columns = (data.columns || []).map(c => c.name);
     if (!rows.length) {
-      target.innerHTML = '<div class="explorer-message">Bu seçim için veri bulunamadı.</div>';
+      target.innerHTML = '<div class="explorer-message">No data found for this selection.</div>';
       return;
     }
     const names = columns.length ? columns : Object.keys(rows[0]);
@@ -717,10 +725,10 @@
     const body = rows.map(row => `<tr>${names.map(name => `<td>${escHtml(row[name] == null ? '—' : row[name])}</td>`).join('')}</tr>`).join('');
     target.innerHTML = `<div class="table-wrap"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>
       <div class="result-meta">
-        <span>${rows.length} gösterilen satır${filtered ? ' (filtreli)' : ''}</span>
-        <span>Kaynak: ${data.source_row_count ?? data.row_count ?? rows.length}</span>
+        <span>${rows.length} displayed row(s)${filtered ? ' (filtered)' : ''}</span>
+        <span>Source rows: ${data.source_row_count ?? data.row_count ?? rows.length}</span>
         ${data.elapsed_ms != null ? `<span>SSAS: ${data.elapsed_ms} ms</span>` : ''}
-        ${data.truncated ? '<span style="color:var(--amber)">Sonuç güvenli limit nedeniyle kısaltıldı</span>' : ''}
+        ${data.truncated ? '<span style="color:var(--amber)">Result truncated by the safety limit</span>' : ''}
       </div>`;
   }
 

@@ -50,7 +50,7 @@ class MDXExecutionTests(unittest.TestCase):
         result = execute_with_repair(
             mdx=original,
             cube_name="cubeWaiting",
-            question="Kaç kayıt var?",
+            question="How many records are there?",
             run_mdx=run,
             repair_mdx=lambda *_: repaired,
         )
@@ -90,7 +90,7 @@ class MDXExecutionTests(unittest.TestCase):
         )
 
         self.assertEqual(result.status, "failed")
-        self.assertIn("hedef cube", result.error)
+        self.assertIn("target cube", result.error)
 
 
 if __name__ == "__main__":

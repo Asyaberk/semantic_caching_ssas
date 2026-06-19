@@ -34,7 +34,7 @@ import uuid
 from dataclasses import dataclass
 from openai import OpenAI
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from qdrant_client.models import Filter, FieldCondition, MatchValue, PayloadSchemaType
 
 from backend.config import settings
 from backend.agents.entity_agent import extract_entities, QuestionEntities
@@ -93,6 +93,7 @@ class QueryResolverAgent:
             api_key=settings.qdrant_api_key,
             https=True,
         )
+        self._ensure_qdrant_indexes()
         self._provider  = get_schema_provider()
         self._mdx_agent = MDXGeneratorAgent(provider=self._provider)
         self._uploader  = QdrantUploaderAgent()
@@ -146,6 +147,19 @@ class QueryResolverAgent:
         return self._full_miss(question, routing.suggested_cube or cube_name, t0, best_score, matched_q)
 
     # ── Private: candidate handling ───────────────────────────────────────────
+
+    def _ensure_qdrant_indexes(self) -> None:
+        """Ensure semantic search filters can run against existing collections."""
+        try:
+            self._qdrant.create_payload_index(
+                collection_name=settings.qdrant_collection_name,
+                field_name="cube_name",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+        except Exception as exc:
+            message = str(exc).lower()
+            if "already exists" not in message and "exists" not in message:
+                logger.warning("Could not ensure Qdrant payload index cube_name: %s", exc)
 
     def _handle_candidate(
         self,

@@ -238,11 +238,11 @@ def execute_mdx(req: ExecuteRequest):
     mdx_cube = extract_cube_name(req.mdx)
     cube = req.cube_name or mdx_cube
     if not mdx_cube:
-        raise HTTPException(status_code=400, detail="MDX sorgusunda FROM [cube] bölümü bulunamadı.")
+        raise HTTPException(status_code=400, detail="The MDX query must include a FROM [cube] clause.")
     if req.cube_name and req.cube_name != mdx_cube:
         raise HTTPException(
             status_code=400,
-            detail=f"Seçilen cube ({req.cube_name}) ile MDX cube'u ({mdx_cube}) uyuşmuyor.",
+            detail=f"The selected cube ({req.cube_name}) does not match the MDX cube ({mdx_cube}).",
         )
 
     result = execute_with_repair(

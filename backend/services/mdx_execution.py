@@ -118,7 +118,7 @@ def execute_with_repair(
         if extract_cube_name(repaired_mdx) != cube_name:
             return ExecutionResult(
                 status="failed",
-                error="MDX onarımı hedef cube'u değiştirdiği için reddedildi.",
+                error="MDX repair was rejected because it changed the target cube.",
                 executed_mdx=mdx,
                 attempt="failed",
             )
@@ -129,7 +129,7 @@ def execute_with_repair(
 
     return ExecutionResult(
         status="failed",
-        error=last_error[:500] or "SSAS sorgusu çalıştırılamadı.",
+        error=last_error[:500] or "The SSAS query could not be executed.",
         executed_mdx=mdx,
         attempt="failed",
     )

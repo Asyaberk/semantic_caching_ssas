@@ -19,13 +19,13 @@ class CubeExplorerTests(unittest.TestCase):
         self.assertTrue(mdx.endswith("FROM [cubeWaiting]"))
 
     def test_console_rejects_cube_mismatch(self):
-        with self.assertRaisesRegex(ValueError, "uyuşmuyor"):
+        with self.assertRaisesRegex(ValueError, "does not match"):
             validate_readonly_mdx(
                 "SELECT {} ON 0 FROM [cubeWaiting]", "cubeAccruement"
             )
 
     def test_console_rejects_non_query_command(self):
-        with self.assertRaisesRegex(ValueError, "SELECT veya WITH"):
+        with self.assertRaisesRegex(ValueError, "SELECT or WITH"):
             validate_readonly_mdx("DRILLTHROUGH SELECT FROM [cubeWaiting]", "cubeWaiting")
 
     def test_result_is_limited_and_marked_truncated(self):

@@ -37,13 +37,13 @@ class FakeProvider:
 
 class QuestionGuardTests(unittest.TestCase):
     def test_rejects_chatter_before_llm(self):
-        result = quick_validate_question("merhaba")
+        result = quick_validate_question("hello")
         self.assertIsNotNone(result)
         self.assertEqual(result.status, "needs_clarification")
 
     def test_routes_waiting_question_to_waiting_cube(self):
         result = route_question_to_cube(
-            "2024 gemi waiting sürelerini göster",
+            "Show vessel waiting counts for 2024",
             FakeProvider(),
         )
         self.assertTrue(result.valid)
@@ -51,20 +51,20 @@ class QuestionGuardTests(unittest.TestCase):
 
     def test_routes_accruement_question_to_accruement_cube(self):
         result = route_question_to_cube(
-            "2025 Türkiye total accruement count nedir?",
+            "What is the total accruement count for Turkey in 2025?",
             FakeProvider(),
         )
         self.assertTrue(result.valid)
         self.assertEqual(result.suggested_cube, "cubeAccruement")
 
     def test_rejects_out_of_schema_question(self):
-        result = route_question_to_cube("bitcoin fiyatı bugün kaç dolar?", FakeProvider())
+        result = route_question_to_cube("What is the bitcoin price today?", FakeProvider())
         self.assertFalse(result.valid)
         self.assertEqual(result.status, "not_answerable")
 
     def test_requested_cube_is_respected_when_known(self):
         result = route_question_to_cube(
-            "2025 toplam count nedir?",
+            "What is the total count for 2025?",
             FakeProvider(),
             requested_cube="cubeVesselOrder",
         )
