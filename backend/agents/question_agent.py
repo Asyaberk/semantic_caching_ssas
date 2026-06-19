@@ -105,7 +105,7 @@ class QuestionGeneratorAgent:
         Args:
             cube_name: Name of the SSAS cube (e.g. "Sales").
             count:     Number of questions to generate in this call.
-            language:  Output language — "en" for English, "tr" for Turkish.
+            language:  Output language. Only English ("en") is supported.
 
         Returns:
             A list of question strings.
@@ -113,6 +113,9 @@ class QuestionGeneratorAgent:
         Raises:
             RuntimeError: If the LLM call fails or the response cannot be parsed.
         """
+        if language != "en":
+            raise ValueError("Only English question generation is supported.")
+
         schema_text = format_cube_for_llm(cube_name, self.provider)
         user_prompt = self._build_prompt(schema_text, count, language)
 
@@ -197,11 +200,6 @@ class QuestionGeneratorAgent:
 
     def _build_prompt(self, schema_text: str, count: int, language: str) -> str:
         """Construct the user-facing prompt sent to the LLM."""
-        lang_line = (
-            "Write every question in English."
-            if language == "en"
-            else "Write every question in Turkish."
-        )
         categories_text = "\n".join(f"  - {c}" for c in QUESTION_CATEGORIES)
 
         return f"""\
@@ -209,7 +207,7 @@ Below is the schema of an SSAS cube:
 
 {schema_text}
 
-{lang_line}
+Write every question in English.
 
 Generate exactly {count} diverse, realistic business questions a user might ask about this cube.
 Cover all of the following question categories:

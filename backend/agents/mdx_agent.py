@@ -19,6 +19,7 @@ from backend.services.member_grounding import (
     find_grounded_members,
     format_grounding_for_prompt,
 )
+from backend.services.mdx_schema_guard import validate_hierarchy_references
 from backend.services.schema_provider import SchemaProvider, get_schema_provider
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,10 @@ CRITICAL — Year/Date filtering:
   Always use [<CubeName>Date].[Date] for date range filtering.
 
 CRITICAL — Dimension members on ROWS:
+- A dimension name is not a hierarchy name. Never emit [Dimension].Children
+  or [Dimension].Members.
+- Always use the complete hierarchy unique name shown in the schema, for example
+  [Vessel].[Vessel Name].Members.
 - Attribute hierarchies (single-level) do NOT support .Members in ON ROWS.
 - Only user hierarchies (multi-level, shown in schema) support .Members.
 - For country/company/goods breakdowns, use WHERE clause filtering instead:
@@ -176,6 +181,10 @@ class MDXGeneratorAgent:
 
             raw    = response.choices[0].message.content
             parsed = self._parse_response(raw)
+            validate_hierarchy_references(
+                parsed["mdx"],
+                self.provider.get_dimensions(cube_name),
+            )
 
             pair = QAPair(
                 question=question,
@@ -296,6 +305,9 @@ Important:
   question-specific member grounding section.
 - If a candidate value is unmatched, do not invent or approximate a member key.
 - Prefer NON EMPTY when putting sets on ROWS.
+- Never use a dimension-only set such as [Vessel].Children or [Vessel].Members.
+  Use an exact hierarchy unique name listed in the schema, especially when the
+  dimension exposes multiple hierarchies.
 
 Return a JSON object with exactly these keys:
 {{

@@ -32,6 +32,7 @@ def format_cube_for_llm(
     dimensions = provider.get_dimensions(cube_name)
     measures   = provider.get_measures(cube_name)
     members    = provider.get_members(cube_name) if include_members else {}
+    hierarchies = provider.get_hierarchies(cube_name)
 
     lines: list[str] = []
 
@@ -52,6 +53,23 @@ def format_cube_for_llm(
     for dim in dimensions:
         lines.append(f"  - {dim['caption']} ({dim['unique_name']})")
         lines.append(f"    Description: {dim['description']}")
+        lines.append(
+            f"    Default hierarchy: {dim.get('default_hierarchy') or 'not specified'}"
+        )
+
+        dim_hierarchies = hierarchies.get(dim["unique_name"], [])
+        for hierarchy in dim_hierarchies:
+            hierarchy_unique = hierarchy.get("uniqueName") or hierarchy.get("unique_name")
+            if not hierarchy_unique:
+                continue
+            levels = [
+                level.get("uniqueName") or level.get("unique_name")
+                for level in hierarchy.get("levels", [])
+                if (level.get("uniqueName") or level.get("unique_name"))
+            ]
+            lines.append(f"    Hierarchy: {hierarchy_unique}")
+            if levels:
+                lines.append(f"      Levels: {', '.join(levels)}")
 
         dim_members = members.get(dim["unique_name"], [])
         if dim_members:

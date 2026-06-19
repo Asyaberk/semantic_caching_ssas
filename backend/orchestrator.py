@@ -20,8 +20,15 @@ from backend.agents.mdx_agent import MDXGeneratorAgent
 from backend.agents.question_agent import QuestionGeneratorAgent
 from backend.agents.uploader_agent import QdrantUploaderAgent
 from backend.config import settings
-from backend.db.database import init_db, load_pairs_for_cube, save_pairs
+from backend.db.database import (
+    init_db,
+    load_pairs_for_cube,
+    log_execution,
+    save_pair_validation,
+    save_pairs,
+)
 from backend.models.schemas import PipelineState, QAPair
+from backend.services.pipeline_validation import validate_pair_candidates
 from backend.services.schema_provider import get_schema_provider
 
 logger = logging.getLogger(__name__)
@@ -159,10 +166,15 @@ class Orchestrator:
                 "Cube '%s': found %d pair(s) in PostgreSQL -- uploading to Qdrant.",
                 cube_name, len(existing_pairs),
             )
-            pairs_to_upload = [
+            pairs_to_validate = [
                 p for p in existing_pairs
                 if p.mdx or not settings.enable_mdx_generation
             ]
+            pairs_to_upload = (
+                self._quality_gate(pairs_to_validate)
+                if settings.enable_mdx_generation
+                else pairs_to_validate
+            )
             cube_uploaded = uploader.upload(pairs_to_upload)
             self._update_state(
                 questions_generated=self._state.questions_generated + len(existing_pairs),
@@ -226,9 +238,10 @@ class Orchestrator:
             except Exception as exc:
                 logger.warning("PostgreSQL save failed (non-fatal): %s", exc)
 
-            # Step D: upload to Qdrant
+            # Step D: validate on SSAS, then upload only proven non-empty queries
             if settings.enable_mdx_generation:
-                batch_uploaded = uploader.upload(pairs)
+                validated_pairs = self._quality_gate(pairs)
+                batch_uploaded = uploader.upload(validated_pairs)
                 cube_uploaded += batch_uploaded
                 self._update_state(
                     uploaded_count=self._state.uploaded_count + batch_uploaded,
@@ -237,6 +250,41 @@ class Orchestrator:
                 self._add_cube_progress(cube_name, cube_uploaded)
             else:
                 logger.info("Skipping Qdrant upload (MDX generation is disabled).")
+
+    def _quality_gate(self, pairs: list[QAPair]) -> list[QAPair]:
+        """Persist SSAS outcomes and return only cache-safe successful pairs."""
+        outcomes = validate_pair_candidates(pairs)
+        accepted = []
+        for outcome in outcomes:
+            pair_id = QdrantUploaderAgent._make_id(
+                outcome.pair.cube_name,
+                outcome.pair.question,
+            )
+            save_pair_validation(
+                pair_id,
+                status=outcome.status,
+                row_count=outcome.row_count,
+                error=outcome.error,
+            )
+            log_execution(
+                question=outcome.pair.question,
+                pair_id=pair_id,
+                cube_name=outcome.pair.cube_name,
+                status=outcome.status,
+                attempt="pipeline_gate",
+                row_count=outcome.row_count,
+                error=outcome.error,
+            )
+            if outcome.status == "success":
+                accepted.append(outcome.pair)
+            else:
+                logger.warning(
+                    "Pipeline quality gate rejected '%s' (%s): %s",
+                    outcome.pair.question[:70],
+                    outcome.status,
+                    outcome.error or "SSAS returned no rows.",
+                )
+        return accepted
 
     # State helpers
 

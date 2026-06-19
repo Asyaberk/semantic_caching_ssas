@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     questions_per_batch: int = 20
     questions_per_cube:  int = 50    # target records to generate per cube
     target_question_count: int = 200
-    question_language:   str = "tr"
+    question_language:   str = "en"
 
     # ── SSAS (real connection, only used when USE_MOCK_CUBE=false) ──
     ssas_url:         str = ""
