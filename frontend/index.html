@@ -114,6 +114,7 @@
     .status-idle    { background: var(--bg);       color: var(--muted); }
     .status-running { background: var(--blue-lt);   color: var(--blue); }
     .status-done    { background: var(--green-lt);  color: var(--green); }
+    .status-stopped { background: var(--amber-lt);  color: var(--amber); }
     .status-error   { background: var(--red-lt);    color: var(--red); }
 
     .action-badge {
@@ -252,46 +253,90 @@
     <!-- ══ Pipeline Tab ══ -->
     <div class="tab-page active" id="tab-pipeline">
       <div class="page-header">
-        <h1>Pipeline</h1>
-        <p>Control the cache seeding pipeline. The pipeline reads each SSAS cube schema, generates question / MDX pairs with an LLM, and loads them into Qdrant.</p>
+        <h1>Seeding &amp; Quality Control</h1>
+        <p>Monitor service health, cache quality, cube coverage, and the live seeding pipeline from one control center.</p>
       </div>
 
       <div class="stats-row">
         <div class="stat-card">
-          <div class="stat-label">Status</div>
+          <div class="stat-label">Pipeline</div>
           <div style="margin-top:8px" id="statusBadge"><span class="status-badge status-idle">Idle</span></div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Total Uploaded</div>
-          <div class="stat-value" id="uploaded">—</div>
+          <div class="stat-label">Cache Pairs</div>
+          <div class="stat-value" id="qualityCachePairs">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Target / Cube</div>
-          <div class="stat-value" id="cubeTarget">—</div>
+          <div class="stat-label">Qdrant Points</div>
+          <div class="stat-value" id="qualityQdrantPoints">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Current Cube</div>
-          <div class="stat-value" id="cubeUploaded">—</div>
+          <div class="stat-label">Cache-use Rate</div>
+          <div class="stat-value" id="qualityHitRate">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">MDX Generated</div>
-          <div class="stat-value" id="mdxGen">—</div>
+          <div class="stat-label">Failure Rate</div>
+          <div class="stat-value" id="qualityFailedRate">—</div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Progress</div>
+        <div class="card-title">System Health</div>
+        <div class="mini-stat-row">
+          <div class="mini-stat"><span>SSAS Bridge</span><strong id="healthSsas">—</strong></div>
+          <div class="mini-stat"><span>PostgreSQL</span><strong id="healthPostgres">—</strong></div>
+          <div class="mini-stat"><span>Qdrant</span><strong id="healthQdrant">—</strong></div>
+          <div class="mini-stat"><span>Validation Blocks</span><strong id="qualityValidationRate">—</strong></div>
+        </div>
+        <p class="helper-copy">
+          A healthy system has reachable SSAS metadata, PostgreSQL cache storage, Qdrant vectors, and low failed/no-answer rates.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Seeding Controls</div>
         <div id="cubeLabel" style="font-size:.85rem;color:var(--muted);margin-bottom:8px">—</div>
         <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
         <div style="font-size:.78rem;color:var(--muted);margin-top:6px" id="progressLabel">0 / 0 per cube</div>
         <div class="btn-row">
           <button class="btn btn-primary" id="startBtn" onclick="startPipeline()">Start</button>
           <button class="btn btn-danger"  id="stopBtn"  onclick="stopPipeline()" disabled>Stop</button>
+          <button class="btn btn-ghost" onclick="loadQualityOverview()">Refresh quality</button>
+        </div>
+        <div class="result-meta">
+          <span id="pipelineUploadedMeta">Uploaded: —</span>
+          <span id="pipelineQuestionsMeta">Questions: —</span>
+          <span id="pipelineMdxMeta">MDX: —</span>
+          <span id="pipelineUpdatedMeta">Updated: —</span>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Live Log</div>
+        <div class="card-title">Cube Coverage &amp; Quality</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cube</th>
+                <th>Cached</th>
+                <th>Verified</th>
+                <th>Flagged</th>
+                <th>Queries</th>
+                <th>Hits</th>
+                <th>Misses</th>
+                <th>Failures</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody id="qualityCubeBody">
+              <tr><td colspan="9" class="empty-state">Loading quality metrics…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Live Run Timeline</div>
         <div class="log-box" id="logBox">Waiting for pipeline…</div>
       </div>
     </div>
@@ -572,6 +617,10 @@
     }
     if (tab === 'history') loadQueryLog(1);
     if (tab === 'cubes')   loadCubes();
+    if (tab === 'pipeline') {
+      pollStatus();
+      loadQualityOverview();
+    }
   }
 
   // ── Cube Explorer ─────────────────────────────────────────────────────────
@@ -798,43 +847,111 @@
       const d = await r.json();
       updatePipelineUI(d);
       if (pollTimer) clearTimeout(pollTimer);
-      if (d.is_running) pollTimer = setTimeout(pollStatus, 2000);
+      if (d.status === 'running') pollTimer = setTimeout(pollStatus, 2000);
     } catch (e) {
       console.error('pollStatus error', e);
     }
   }
 
   function updatePipelineUI(d) {
-    const running = d.is_running;
+    const running = d.status === 'running';
     document.getElementById('startBtn').disabled = running;
     document.getElementById('stopBtn').disabled  = !running;
 
-    const st = running ? 'running' : (d.error ? 'error' : (d.total_uploaded > 0 ? 'done' : 'idle'));
-    const labels = { running: 'Running', idle: 'Idle', done: 'Done', error: 'Error' };
+    const st = d.status === 'completed' ? 'done' : (d.status || 'idle');
+    const labels = { running: 'Running', idle: 'Idle', done: 'Completed', completed: 'Completed', stopped: 'Stopped', error: 'Error' };
     document.getElementById('statusBadge').innerHTML =
       `<span class="status-badge status-${st}">${labels[st] || st}</span>`;
-
-    document.getElementById('uploaded').textContent   = d.total_uploaded ?? '—';
-    document.getElementById('cubeTarget').textContent = d.cube_target    ?? '—';
-    document.getElementById('cubeUploaded').textContent = d.cube_uploaded_count ?? '—';
-    document.getElementById('mdxGen').textContent     = d.mdx_generated  ?? '—';
 
     const pct = d.cube_target ? Math.min(100, (d.cube_uploaded_count / d.cube_target) * 100) : 0;
     document.getElementById('progressFill').style.width  = pct.toFixed(1) + '%';
     document.getElementById('cubeLabel').textContent     = d.current_cube ?? '—';
     document.getElementById('progressLabel').textContent =
       `${d.cube_uploaded_count ?? 0} / ${d.cube_target ?? 0} per cube`;
+    document.getElementById('pipelineUploadedMeta').textContent = `Uploaded: ${d.uploaded_count ?? 0}`;
+    document.getElementById('pipelineQuestionsMeta').textContent = `Questions: ${d.questions_generated ?? 0}`;
+    document.getElementById('pipelineMdxMeta').textContent = `MDX: ${d.mdx_generated ?? 0}`;
+    document.getElementById('pipelineUpdatedMeta').textContent = `Updated: ${d.last_updated ? new Date(d.last_updated).toLocaleTimeString() : '—'}`;
 
-    if (d.log_lines && d.log_lines.length) {
-      logLines = [...logLines, ...d.log_lines].slice(-200);
-      const box = document.getElementById('logBox');
-      box.textContent = logLines.join('\n');
-      box.scrollTop   = box.scrollHeight;
+    const timeline = [
+      `Status: ${d.status || 'idle'}`,
+      `Current cube: ${d.current_cube || '—'}`,
+      `Cube progress: ${d.cube_uploaded_count ?? 0} / ${d.cube_target ?? 0}`,
+      `Total cubes: ${d.total_cubes ?? 0}`,
+      `Generated questions: ${d.questions_generated ?? 0}`,
+      `Generated MDX: ${d.mdx_generated ?? 0}`,
+      `Uploaded pairs: ${d.uploaded_count ?? 0}`,
+      d.last_error ? `Last error: ${d.last_error}` : null,
+    ].filter(Boolean);
+    const box = document.getElementById('logBox');
+    box.textContent = timeline.join('\n');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function loadQualityOverview() {
+    try {
+      const res = await fetch('/admin/quality/overview');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Could not load quality overview.');
+      renderQualityOverview(data);
+    } catch (e) {
+      document.getElementById('qualityCubeBody').innerHTML =
+        `<tr><td colspan="9" class="empty-state" style="color:var(--red)">Error: ${escHtml(e.message)}</td></tr>`;
     }
   }
 
+  function renderHealthLabel(item, suffix = '') {
+    const status = item?.status || 'unknown';
+    const value = suffix ? `${status} ${suffix}` : status;
+    const color = status === 'ok' ? 'var(--green)' : status === 'error' ? 'var(--red)' : 'var(--amber)';
+    return `<span style="color:${color}">${escHtml(value)}</span>`;
+  }
+
+  function renderQualityOverview(data) {
+    const cache = data.cache || {};
+    const log = data.query_log || {};
+    const health = data.health || {};
+    document.getElementById('qualityCachePairs').textContent = cache.total ?? '0';
+    document.getElementById('qualityQdrantPoints').textContent = health.qdrant?.points ?? '—';
+    document.getElementById('qualityHitRate').textContent = `${log.hit_like_rate ?? 0}%`;
+    document.getElementById('qualityFailedRate').textContent = `${log.failed_rate ?? 0}%`;
+    document.getElementById('qualityValidationRate').textContent = `${log.validation_block_rate ?? 0}%`;
+
+    document.getElementById('healthSsas').innerHTML =
+      renderHealthLabel(health.ssas, health.ssas?.cube_count != null ? `· ${health.ssas.cube_count} cubes` : '');
+    document.getElementById('healthPostgres').innerHTML = renderHealthLabel(health.postgres);
+    document.getElementById('healthQdrant').innerHTML =
+      renderHealthLabel(health.qdrant, health.qdrant?.points != null ? `· ${health.qdrant.points} points` : '');
+
+    const body = document.getElementById('qualityCubeBody');
+    const cubes = data.cubes || [];
+    if (!cubes.length) {
+      body.innerHTML = '<tr><td colspan="9" class="empty-state">No cube quality data yet.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = cubes.map(cube => {
+      const score = cube.quality_score ?? 0;
+      const scoreColor = score >= 85 ? 'var(--green)' : score >= 65 ? 'var(--amber)' : 'var(--red)';
+      const failures = (cube.failed || 0) + (cube.not_answerable || 0);
+      return `<tr>
+        <td style="font-weight:650">${escHtml(cube.cube_name)}</td>
+        <td>${cube.cached_pairs ?? 0}</td>
+        <td>${cube.verified ?? 0}</td>
+        <td>${cube.flagged ?? 0}</td>
+        <td>${cube.queries ?? 0}</td>
+        <td>${(cube.hits || 0) + (cube.templates || 0) + (cube.patched || 0)}</td>
+        <td>${cube.misses ?? 0}</td>
+        <td>${failures}</td>
+        <td><span class="status-badge" style="background:var(--bg);color:${scoreColor}">${score}</span></td>
+      </tr>`;
+    }).join('');
+  }
+
   pollStatus();
+  loadQualityOverview();
   setInterval(pollStatus, 5000);
+  setInterval(loadQualityOverview, 30000);
 
   // ── Cache Management ───────────────────────────────────────────────────────
   let cachePage = 1;

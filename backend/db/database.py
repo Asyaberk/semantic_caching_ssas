@@ -351,6 +351,126 @@ def get_cache_stats() -> dict:
     }
 
 
+def get_quality_overview() -> dict:
+    """Return cache and query-log metrics for the quality dashboard."""
+    cache = get_cache_stats()
+
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM query_log")
+            total_queries = cur.fetchone()["total"]
+
+            cur.execute(
+                """
+                SELECT COALESCE(action, 'unknown') AS action, COUNT(*) AS count
+                FROM query_log
+                GROUP BY COALESCE(action, 'unknown')
+                ORDER BY action
+                """
+            )
+            actions = {row["action"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(
+                """
+                SELECT COALESCE(mismatch, 'unknown') AS mismatch, COUNT(*) AS count
+                FROM query_log
+                GROUP BY COALESCE(mismatch, 'unknown')
+                ORDER BY mismatch
+                """
+            )
+            mismatches = {row["mismatch"]: row["count"] for row in cur.fetchall()}
+
+            cur.execute(
+                """
+                SELECT cube_name,
+                       COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE feedback = 'negative') AS flagged,
+                       COUNT(*) FILTER (WHERE feedback = 'positive') AS verified,
+                       COUNT(*) FILTER (WHERE mdx_template IS NOT NULL) AS templated
+                FROM qa_pairs
+                GROUP BY cube_name
+                ORDER BY cube_name
+                """
+            )
+            cube_cache = {row["cube_name"]: dict(row) for row in cur.fetchall()}
+
+            cur.execute(
+                """
+                SELECT cube_name,
+                       COUNT(*) AS queries,
+                       COUNT(*) FILTER (WHERE action = 'hit') AS hits,
+                       COUNT(*) FILTER (WHERE action = 'template') AS templates,
+                       COUNT(*) FILTER (WHERE action = 'patched') AS patched,
+                       COUNT(*) FILTER (WHERE action = 'miss') AS misses,
+                       COUNT(*) FILTER (WHERE action = 'failed') AS failed,
+                       COUNT(*) FILTER (WHERE action = 'needs_clarification') AS needs_clarification,
+                       COUNT(*) FILTER (WHERE action = 'not_answerable') AS not_answerable
+                FROM query_log
+                WHERE cube_name IS NOT NULL
+                GROUP BY cube_name
+                ORDER BY cube_name
+                """
+            )
+            cube_queries = {row["cube_name"]: dict(row) for row in cur.fetchall()}
+
+    cube_names = sorted(set(cube_cache) | set(cube_queries))
+    cubes = []
+    for cube_name in cube_names:
+        cached = cube_cache.get(cube_name, {})
+        queried = cube_queries.get(cube_name, {})
+        total_cached = cached.get("total", 0) or 0
+        flagged = cached.get("flagged", 0) or 0
+        verified = cached.get("verified", 0) or 0
+        queries = queried.get("queries", 0) or 0
+        failures = (queried.get("failed", 0) or 0) + (queried.get("not_answerable", 0) or 0)
+        quality_score = 100
+        if total_cached:
+            quality_score -= min(40, round((flagged / total_cached) * 40))
+            quality_score += min(20, round((verified / total_cached) * 20))
+        if queries:
+            quality_score -= min(30, round((failures / queries) * 30))
+        quality_score = max(0, min(100, quality_score))
+
+        cubes.append({
+            "cube_name": cube_name,
+            "cached_pairs": total_cached,
+            "flagged": flagged,
+            "verified": verified,
+            "templated": cached.get("templated", 0) or 0,
+            "queries": queries,
+            "hits": queried.get("hits", 0) or 0,
+            "templates": queried.get("templates", 0) or 0,
+            "patched": queried.get("patched", 0) or 0,
+            "misses": queried.get("misses", 0) or 0,
+            "failed": queried.get("failed", 0) or 0,
+            "needs_clarification": queried.get("needs_clarification", 0) or 0,
+            "not_answerable": queried.get("not_answerable", 0) or 0,
+            "quality_score": quality_score,
+        })
+
+    hit_like = sum(actions.get(key, 0) for key in ("hit", "template", "patched"))
+    miss_like = actions.get("miss", 0)
+    validation_blocks = sum(actions.get(key, 0) for key in ("needs_clarification", "not_answerable"))
+    failed = actions.get("failed", 0)
+
+    def rate(value: int) -> float:
+        return round((value / total_queries) * 100, 1) if total_queries else 0.0
+
+    return {
+        "cache": cache,
+        "query_log": {
+            "total": total_queries,
+            "actions": actions,
+            "mismatches": mismatches,
+            "hit_like_rate": rate(hit_like),
+            "miss_rate": rate(miss_like),
+            "validation_block_rate": rate(validation_blocks),
+            "failed_rate": rate(failed),
+        },
+        "cubes": cubes,
+    }
+
+
 def count_pairs_for_cube(cube_name: str) -> int:
     """Return the number of stored QA pairs for a cube."""
     with get_connection() as conn:

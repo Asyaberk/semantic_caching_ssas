@@ -23,6 +23,7 @@ from backend.db.database import (
     delete_pairs,
     get_all_pairs,
     get_cache_stats,
+    get_quality_overview,
     update_pair_mdx,
     delete_pair,
     get_query_log,
@@ -110,6 +111,15 @@ def _execute_bridge(mdx: str) -> dict:
         raise HTTPException(status_code=502, detail=f"SSAS connection error: {exc}") from exc
 
 
+def _qdrant_points_count() -> int | None:
+    try:
+        info = _qdrant.get_collection(settings.qdrant_collection_name)
+        return info.points_count
+    except Exception as exc:
+        logger.warning("Could not read Qdrant collection count: %s", exc)
+        return None
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/cubes")
@@ -191,6 +201,32 @@ def explorer_execute(cube_name: str, body: ExplorerExecuteRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return shape_result(_execute_bridge(mdx), mdx, limit)
+
+
+@router.get("/quality/overview")
+def quality_overview():
+    """Return service health, cache quality, and cube coverage metrics."""
+    overview = get_quality_overview()
+
+    qdrant_points = _qdrant_points_count()
+    health = {
+        "postgres": {"status": "ok"},
+        "qdrant": {
+            "status": "ok" if qdrant_points is not None else "error",
+            "points": qdrant_points,
+        },
+        "ssas": {"status": "unknown", "cube_count": None},
+    }
+
+    try:
+        cubes = _schema_provider.get_cubes()
+        health["ssas"] = {"status": "ok", "cube_count": len(cubes)}
+    except Exception as exc:
+        health["ssas"] = {"status": "error", "cube_count": None, "error": str(exc)[:300]}
+
+    overview["health"] = health
+    return overview
+
 
 @router.get("/cache", response_model=CacheListResponse)
 async def list_cache(
