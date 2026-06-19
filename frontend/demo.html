@@ -140,6 +140,22 @@
 
     /* ── Examples ── */
     .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .example-group {
+      width: 100%;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 2px;
+    }
+    .example-group-label {
+      min-width: 88px;
+      font-size: .72rem;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
     .example-chip {
       padding: 6px 14px;
       background: var(--accent-lt);
@@ -354,10 +370,23 @@
     </div>
 
     <div class="examples">
-      <span class="field-label" style="align-self:center; margin-bottom:0">Try:</span>
-      <button class="example-chip" onclick="setQ('What is the total accruement for Turkey in 2025?')">Total accruement Turkey 2025</button>
-      <button class="example-chip" onclick="setQ('Show me vessel waiting times for 2024')">Vessel waiting times 2024</button>
-      <button class="example-chip" onclick="setQ('How many vessel orders were there in 2025?')">Vessel orders count 2025</button>
+      <span class="field-label" style="width:100%; margin-bottom:0">Try a known-safe question:</span>
+      <div class="example-group">
+        <span class="example-group-label">Aggregates</span>
+        <button class="example-chip" onclick="setQ('What is the total waiting count?')">Total waiting count</button>
+        <button class="example-chip" onclick="setQ('What is the total vessel order count?')">Total vessel orders</button>
+        <button class="example-chip" onclick="setQ('What is the total accruement count?')">Total accruement count</button>
+      </div>
+      <div class="example-group">
+        <span class="example-group-label">With year</span>
+        <button class="example-chip" onclick="setQ('What is the total waiting count for 2025?')">Waiting count 2025</button>
+        <button class="example-chip" onclick="setQ('How many vessel orders were there in 2025?')">Vessel orders 2025</button>
+      </div>
+      <div class="example-group">
+        <span class="example-group-label">Breakdowns</span>
+        <button class="example-chip" onclick="setQ('Show waiting count by vessel.')">Waiting by vessel</button>
+        <button class="example-chip" onclick="setQ('Show vessel order count by vessel.')">Orders by vessel</button>
+      </div>
     </div>
 </div>
 
@@ -578,7 +607,7 @@
       const validationNote = `<div style="font-size:.75rem;color:#047857;margin-top:8px">✓ ${escHtml(attemptLabels[data.attempt] || 'Validated on SSAS')}</div>`;
 
       if (data.status === 'no_data') {
-        if (out) out.innerHTML = `${validationNote}<div style="font-size:.8rem;color:var(--muted);margin-top:8px">The query is valid, but no data was found for the selected filters.</div>`;
+        if (out) out.innerHTML = `${validationNote}<div style="font-size:.8rem;color:var(--muted);margin-top:8px">The MDX is valid, but SSAS returned no rows. This usually means the generated filters do not match real cube members. Try an aggregate example first, or inspect exact members in Admin → Cube Explorer.</div>`;
         return;
       }
 

@@ -74,6 +74,18 @@
     }
     .stat-label { font-size: .72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
     .stat-value { font-size: 1.6rem; font-weight: 700; margin-top: 6px; color: var(--text); }
+    .mini-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .mini-stat {
+      border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+      background: linear-gradient(135deg,#fff,#f8fafc);
+    }
+    .mini-stat span { display: block; font-size: .68rem; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: .4px; }
+    .mini-stat strong { display: block; font-size: 1.25rem; margin-top: 4px; }
+    .danger-zone {
+      border-color: #fecaca;
+      background: linear-gradient(135deg,#fff,#fff7f7);
+    }
+    .helper-copy { font-size:.82rem; color:var(--muted); line-height:1.55; }
 
     /* ── Progress ────────────────────────────────────────────────── */
     .progress-track { height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; margin-top: 10px; }
@@ -369,7 +381,28 @@
     <div class="tab-page" id="tab-cache">
       <div class="page-header">
         <h1>Cache</h1>
-        <p>All pre-generated Q&amp;A pairs stored in PostgreSQL and Qdrant. This is what the semantic search draws from. Edit MDX or delete pairs here.</p>
+        <p>Manage the semantic cache stored in PostgreSQL and Qdrant. Query history is managed separately, so cache cleanup does not erase the audit trail.</p>
+      </div>
+
+      <div class="card danger-zone">
+        <div class="card-title">Cache Management</div>
+        <div class="mini-stat-row">
+          <div class="mini-stat"><span>Total pairs</span><strong id="cacheStatTotal">—</strong></div>
+          <div class="mini-stat"><span>Flagged</span><strong id="cacheStatFlagged">—</strong></div>
+          <div class="mini-stat"><span>Verified</span><strong id="cacheStatVerified">—</strong></div>
+          <div class="mini-stat"><span>Templated</span><strong id="cacheStatTemplated">—</strong></div>
+        </div>
+        <p class="helper-copy">
+          Use filtered cleanup when fixing bad MDX at scale. The current filter controls which pairs are deleted.
+          A full cache clear requires a separate confirmation and preserves query history.
+        </p>
+        <div class="btn-row">
+          <button class="btn btn-danger" onclick="clearFilteredCache()">Clear current filtered cache</button>
+          <button class="btn btn-danger" onclick="clearFlaggedCache()">Clear flagged pairs</button>
+          <button class="btn btn-danger" onclick="clearAllCache()">Clear all cache</button>
+          <button class="btn btn-ghost" onclick="loadCacheStats()">Refresh stats</button>
+        </div>
+        <div id="cacheActionStatus" style="font-size:.8rem;color:var(--muted);margin-top:10px"></div>
       </div>
 
       <div class="card">
@@ -441,7 +474,19 @@
     <div class="tab-page" id="tab-history">
       <div class="page-header">
         <h1>Query History</h1>
-        <p>Every question users asked — and how the system answered it. Hit means the cache answered directly. Patched means the MDX was adapted (year or entity changed). Miss means the LLM generated a fresh answer.</p>
+        <p>Every question users asked — and how the system answered it. Hit means the cache answered directly. Patched means the MDX was adapted. Miss means the LLM generated a fresh answer.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">History Management</div>
+        <p class="helper-copy">
+          Query history is an audit trail. Clearing it does not delete cached Q&amp;A pairs from PostgreSQL or Qdrant.
+        </p>
+        <div class="btn-row">
+          <button class="btn btn-danger" onclick="clearFilteredHistory()">Clear current filtered history</button>
+          <button class="btn btn-danger" onclick="clearAllHistory()">Clear all history</button>
+          <span id="historyActionStatus" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+        </div>
       </div>
 
       <div class="card">
@@ -521,7 +566,10 @@
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('tab-'  + tab).classList.add('active');
     document.getElementById('nav-'  + tab).classList.add('active');
-    if (tab === 'cache')   loadCache(1);
+    if (tab === 'cache') {
+      loadCacheStats();
+      loadCache(1);
+    }
     if (tab === 'history') loadQueryLog(1);
     if (tab === 'cubes')   loadCubes();
   }
@@ -858,6 +906,75 @@
     }
   }
 
+  async function loadCacheStats() {
+    try {
+      const res = await fetch('/admin/cache/stats');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Could not load cache stats.');
+      document.getElementById('cacheStatTotal').textContent = data.total ?? '0';
+      document.getElementById('cacheStatFlagged').textContent = data.flagged ?? '0';
+      document.getElementById('cacheStatVerified').textContent = data.verified ?? '0';
+      document.getElementById('cacheStatTemplated').textContent = data.templated ?? '0';
+    } catch (e) {
+      document.getElementById('cacheActionStatus').textContent = `Stats error: ${e.message}`;
+      document.getElementById('cacheActionStatus').style.color = 'var(--red)';
+    }
+  }
+
+  function currentCacheFilters() {
+    return {
+      cube_name: document.getElementById('filterCube').value || null,
+      feedback: document.getElementById('filterFeedback').value || null,
+      search: document.getElementById('filterSearch').value.trim() || null,
+      mdx_search: document.getElementById('filterMdx').value.trim() || null,
+    };
+  }
+
+  function setCacheActionStatus(message, isError = false) {
+    const el = document.getElementById('cacheActionStatus');
+    el.textContent = message;
+    el.style.color = isError ? 'var(--red)' : 'var(--muted)';
+  }
+
+  async function clearCacheWithPayload(payload, label) {
+    try {
+      const res = await fetch('/admin/cache/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Cache clear failed.');
+      setCacheActionStatus(`${label}: deleted ${data.deleted_postgres} PostgreSQL pair(s); requested ${data.deleted_qdrant_requested} Qdrant delete(s).`);
+      await loadCacheStats();
+      await loadCache(1);
+    } catch (e) {
+      setCacheActionStatus(e.message, true);
+    }
+  }
+
+  function clearFilteredCache() {
+    const payload = currentCacheFilters();
+    const hasFilter = Object.values(payload).some(Boolean);
+    if (!hasFilter) {
+      alert('Set at least one filter first, or use Clear all cache.');
+      return;
+    }
+    if (!confirm('Delete all cache pairs matching the current filters? Query history will be preserved.')) return;
+    clearCacheWithPayload(payload, 'Filtered clear');
+  }
+
+  function clearFlaggedCache() {
+    if (!confirm('Delete all flagged cache pairs? Query history will be preserved.')) return;
+    clearCacheWithPayload({ feedback: 'negative' }, 'Flagged clear');
+  }
+
+  function clearAllCache() {
+    const typed = prompt('Type CLEAR ALL CACHE to delete every cached pair. Query history will be preserved.', '');
+    if (typed !== 'CLEAR ALL CACHE') return;
+    clearCacheWithPayload({ confirm_all: true }, 'Full cache clear');
+  }
+
   function changePage(delta) {
     const newPage = cachePage + delta;
     if (newPage >= 1 && newPage <= cacheTotalPgs) loadCache(newPage);
@@ -888,6 +1005,7 @@
       });
       if (!res.ok) throw new Error(await res.text());
       closeModal();
+      loadCacheStats();
       loadCache(cachePage);
     } catch (e) { alert('Save failed: ' + e.message); }
   }
@@ -897,6 +1015,7 @@
     try {
       const res = await fetch(`/admin/cache/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
+      loadCacheStats();
       loadCache(cachePage);
     } catch (e) { alert('Delete failed: ' + e.message); }
   }
@@ -989,6 +1108,45 @@
       alert('Saved to cache.');
       loadQueryLog(logPage);
     } catch (e) { alert('Failed: ' + e.message); }
+  }
+
+  function setHistoryActionStatus(message, isError = false) {
+    const el = document.getElementById('historyActionStatus');
+    el.textContent = message;
+    el.style.color = isError ? 'var(--red)' : 'var(--muted)';
+  }
+
+  async function clearHistoryWithPayload(payload, label) {
+    try {
+      const res = await fetch('/admin/query-log/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'History clear failed.');
+      setHistoryActionStatus(`${label}: deleted ${data.deleted} row(s). Cache was preserved.`);
+      await loadQueryLog(1);
+    } catch (e) {
+      setHistoryActionStatus(e.message, true);
+    }
+  }
+
+  function clearFilteredHistory() {
+    const action = document.getElementById('logFilterAction').value || null;
+    const mismatch = document.getElementById('logFilterMismatch').value || null;
+    if (!action && !mismatch) {
+      alert('Set at least one history filter first, or use Clear all history.');
+      return;
+    }
+    if (!confirm('Delete query-history rows matching the current filters? Cache pairs will be preserved.')) return;
+    clearHistoryWithPayload({ action, mismatch }, 'Filtered history clear');
+  }
+
+  function clearAllHistory() {
+    const typed = prompt('Type CLEAR HISTORY to delete every query-history row. Cache pairs will be preserved.', '');
+    if (typed !== 'CLEAR HISTORY') return;
+    clearHistoryWithPayload({ confirm_all: true }, 'Full history clear');
   }
 
   // ── Utils ──────────────────────────────────────────────────────────────────

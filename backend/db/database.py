@@ -316,6 +316,41 @@ def get_all_pairs(
     return rows, total
 
 
+def get_cache_stats() -> dict:
+    """Return high-level cache counts for admin management."""
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM qa_pairs")
+            total = cur.fetchone()["total"]
+
+            cur.execute("SELECT COUNT(*) AS flagged FROM qa_pairs WHERE feedback = 'negative'")
+            flagged = cur.fetchone()["flagged"]
+
+            cur.execute("SELECT COUNT(*) AS verified FROM qa_pairs WHERE feedback = 'positive'")
+            verified = cur.fetchone()["verified"]
+
+            cur.execute("SELECT COUNT(*) AS templated FROM qa_pairs WHERE mdx_template IS NOT NULL")
+            templated = cur.fetchone()["templated"]
+
+            cur.execute(
+                """
+                SELECT cube_name, COUNT(*) AS count
+                FROM qa_pairs
+                GROUP BY cube_name
+                ORDER BY cube_name
+                """
+            )
+            by_cube = [dict(row) for row in cur.fetchall()]
+
+    return {
+        "total": total,
+        "flagged": flagged,
+        "verified": verified,
+        "templated": templated,
+        "by_cube": by_cube,
+    }
+
+
 def count_pairs_for_cube(cube_name: str) -> int:
     """Return the number of stored QA pairs for a cube."""
     with get_connection() as conn:
@@ -352,6 +387,50 @@ def delete_pair(pair_id: str) -> bool:
             deleted = cur.rowcount
         conn.commit()
     return deleted > 0
+
+
+def delete_pairs(
+    *,
+    cube_name: str | None = None,
+    feedback: str | None = None,
+    search: str | None = None,
+    mdx_search: str | None = None,
+    has_template: bool | None = None,
+) -> tuple[list[str], int]:
+    """Delete QA pairs matching the same filters as the cache list."""
+    conditions: list[str] = []
+    params: list = []
+
+    if cube_name:
+        conditions.append("cube_name = %s")
+        params.append(cube_name)
+    if feedback:
+        conditions.append("feedback = %s")
+        params.append(feedback)
+    if search:
+        conditions.append("question ILIKE %s")
+        params.append(f"%{search}%")
+    if mdx_search:
+        conditions.append("mdx ILIKE %s")
+        params.append(f"%{mdx_search}%")
+    if has_template is True:
+        conditions.append("mdx_template IS NOT NULL")
+    elif has_template is False:
+        conditions.append("mdx_template IS NULL")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT id FROM qa_pairs {where}", params)
+            ids = [row[0] for row in cur.fetchall()]
+            if not ids:
+                return [], 0
+            cur.execute(f"DELETE FROM qa_pairs {where}", params)
+            deleted = cur.rowcount
+        conn.commit()
+
+    return ids, deleted
 
 
 # ── Query Log ─────────────────────────────────────────────────────────────────
@@ -442,3 +521,23 @@ def get_query_log(
             r["created_at"] = r["created_at"].isoformat()
 
     return rows, total
+
+
+def clear_query_log(action: str | None = None, mismatch: str | None = None) -> int:
+    """Delete query-log rows, optionally filtered by action and mismatch."""
+    conditions: list[str] = []
+    params: list = []
+    if action:
+        conditions.append("action = %s")
+        params.append(action)
+    if mismatch:
+        conditions.append("mismatch = %s")
+        params.append(mismatch)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"DELETE FROM query_log {where}", params)
+            deleted = cur.rowcount
+        conn.commit()
+    return deleted

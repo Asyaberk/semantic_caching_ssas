@@ -10,18 +10,23 @@ DELETE /admin/cache/{pair_id}    — delete a pair from PostgreSQL + Qdrant
 """
 
 import logging
-import uuid
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointIdsList, Filter, FieldCondition, MatchValue
+from qdrant_client.models import PointIdsList
 
 from backend.config  import settings
 from backend.db.database import (
-    get_all_pairs, update_pair_mdx, delete_pair,
-    get_query_log, save_pairs,
+    clear_query_log,
+    delete_pairs,
+    get_all_pairs,
+    get_cache_stats,
+    update_pair_mdx,
+    delete_pair,
+    get_query_log,
+    save_pairs,
 )
 from backend.models.schemas import QAPair
 from backend.services.cube_explorer import (
@@ -54,6 +59,21 @@ class CacheListResponse(BaseModel):
 
 class UpdateMdxRequest(BaseModel):
     mdx: str
+
+
+class CacheClearRequest(BaseModel):
+    cube_name: str | None = None
+    feedback: str | None = None
+    search: str | None = None
+    mdx_search: str | None = None
+    has_template: bool | None = None
+    confirm_all: bool = False
+
+
+class QueryLogClearRequest(BaseModel):
+    action: str | None = None
+    mismatch: str | None = None
+    confirm_all: bool = False
 
 
 class ExplorerExecuteRequest(BaseModel):
@@ -195,6 +215,64 @@ async def list_cache(
     return CacheListResponse(total=total, page=page, page_size=page_size, items=rows)
 
 
+@router.get("/cache/stats")
+async def cache_stats():
+    """Return cache counts used by the admin management cards."""
+    try:
+        return get_cache_stats()
+    except Exception as exc:
+        logger.error("cache_stats failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/cache/clear")
+async def clear_cache(req: CacheClearRequest):
+    """
+    Delete cached QA pairs from PostgreSQL and Qdrant.
+
+    If no filter is supplied, confirm_all must be true to prevent accidental
+    full-cache deletion. Query history is intentionally not affected.
+    """
+    has_filter = any([
+        req.cube_name,
+        req.feedback,
+        req.search,
+        req.mdx_search,
+        req.has_template is not None,
+    ])
+    if not has_filter and not req.confirm_all:
+        raise HTTPException(
+            status_code=400,
+            detail="Full cache clear requires confirm_all=true.",
+        )
+
+    ids, deleted_pg = delete_pairs(
+        cube_name=req.cube_name,
+        feedback=req.feedback,
+        search=req.search,
+        mdx_search=req.mdx_search,
+        has_template=req.has_template,
+    )
+
+    deleted_qdrant = 0
+    for start in range(0, len(ids), 100):
+        chunk = ids[start:start + 100]
+        try:
+            _qdrant.delete(
+                collection_name=settings.qdrant_collection_name,
+                points_selector=PointIdsList(points=chunk),
+            )
+            deleted_qdrant += len(chunk)
+        except Exception as exc:
+            logger.warning("Qdrant bulk delete failed for %d point(s): %s", len(chunk), exc)
+
+    return {
+        "deleted_postgres": deleted_pg,
+        "deleted_qdrant_requested": deleted_qdrant,
+        "query_log_preserved": True,
+    }
+
+
 @router.put("/cache/{pair_id}")
 async def update_cache_entry(pair_id: str, body: UpdateMdxRequest):
     """
@@ -267,6 +345,19 @@ async def list_query_log(
         page=page, page_size=page_size,
     )
     return QueryLogResponse(total=total, page=page, page_size=page_size, items=rows)
+
+
+@router.post("/query-log/clear")
+async def clear_query_history(req: QueryLogClearRequest):
+    """Clear query history rows without touching the semantic cache."""
+    has_filter = bool(req.action or req.mismatch)
+    if not has_filter and not req.confirm_all:
+        raise HTTPException(
+            status_code=400,
+            detail="Full query-log clear requires confirm_all=true.",
+        )
+    deleted = clear_query_log(action=req.action, mismatch=req.mismatch)
+    return {"deleted": deleted, "cache_preserved": True}
 
 
 class AddToCacheRequest(BaseModel):
