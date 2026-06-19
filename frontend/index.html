@@ -336,6 +336,33 @@
       </div>
 
       <div class="card">
+        <div class="card-title">Golden Question Catalog</div>
+        <p class="helper-copy">
+          These curated examples are safe demo entry points. Validate them against SSAS before using them as public examples.
+        </p>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="validateGoldenCatalog()">Validate on SSAS</button>
+          <button class="btn btn-ghost" onclick="loadGoldenCatalog()">Refresh catalog</button>
+          <span id="goldenCatalogStatus" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+        </div>
+        <div class="table-wrap" style="margin-top:14px">
+          <table>
+            <thead>
+              <tr>
+                <th>Question</th>
+                <th>Cube</th>
+                <th>Category</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="goldenCatalogBody">
+              <tr><td colspan="4" class="empty-state">Loading golden catalog…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">Live Run Timeline</div>
         <div class="log-box" id="logBox">Waiting for pipeline…</div>
       </div>
@@ -620,6 +647,7 @@
     if (tab === 'pipeline') {
       pollStatus();
       loadQualityOverview();
+      loadGoldenCatalog();
     }
   }
 
@@ -948,8 +976,58 @@
     }).join('');
   }
 
+  async function loadGoldenCatalog() {
+    const body = document.getElementById('goldenCatalogBody');
+    try {
+      const res = await fetch('/admin/golden-catalog');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Could not load golden catalog.');
+      renderGoldenCatalog(data.items || []);
+      document.getElementById('goldenCatalogStatus').textContent = `${data.total || 0} example(s) loaded.`;
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="4" class="empty-state" style="color:var(--red)">Error: ${escHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  function renderGoldenCatalog(items) {
+    const body = document.getElementById('goldenCatalogBody');
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="4" class="empty-state">No golden examples yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = items.map(item => {
+      const status = item.status || 'not validated';
+      const color = status === 'success' ? 'var(--green)' : status === 'failed' ? 'var(--red)' : status === 'no_data' ? 'var(--amber)' : 'var(--muted)';
+      return `<tr>
+        <td>
+          <div style="font-weight:650">${escHtml(item.title || item.question)}</div>
+          <div style="font-size:.76rem;color:var(--muted);margin-top:2px">${escHtml(item.question)}</div>
+        </td>
+        <td style="font-size:.78rem;color:var(--muted)">${escHtml(item.cube_name)}</td>
+        <td>${escHtml(item.category || '—')}</td>
+        <td><span class="status-badge" style="background:var(--bg);color:${color}">${escHtml(status)}</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function validateGoldenCatalog() {
+    const status = document.getElementById('goldenCatalogStatus');
+    status.textContent = 'Validating examples on SSAS…';
+    try {
+      const res = await fetch('/admin/golden-catalog/validate', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Golden catalog validation failed.');
+      renderGoldenCatalog(data.items || []);
+      status.textContent = `${data.passed || 0} / ${data.total || 0} example(s) passed SSAS validation.`;
+    } catch (e) {
+      status.textContent = e.message;
+      status.style.color = 'var(--red)';
+    }
+  }
+
   pollStatus();
   loadQualityOverview();
+  loadGoldenCatalog();
   setInterval(pollStatus, 5000);
   setInterval(loadQualityOverview, 30000);
 

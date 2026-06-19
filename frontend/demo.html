@@ -369,7 +369,7 @@
       <span style="font-size:.78rem;color:var(--muted)">The system will automatically find the right cube.</span>
     </div>
 
-    <div class="examples">
+    <div class="examples" id="exampleCatalog">
       <span class="field-label" style="width:100%; margin-bottom:0">Try a known-safe question:</span>
       <div class="example-group">
         <span class="example-group-label">Aggregates</span>
@@ -404,6 +404,35 @@
 
   function setQ(q) {
     document.getElementById('question').value = q;
+  }
+
+  async function loadExampleCatalog() {
+    try {
+      const res = await fetch('/admin/golden-catalog');
+      const data = await res.json();
+      if (!res.ok || !data.items?.length) return;
+
+      const grouped = data.items.reduce((acc, item) => {
+        (acc[item.category] ||= []).push(item);
+        return acc;
+      }, {});
+      const groups = Object.entries(grouped).map(([category, items]) => `
+        <div class="example-group">
+          <span class="example-group-label">${escHtml(category)}</span>
+          ${items.map(item => `
+            <button class="example-chip" title="${escHtml(item.description || item.cube_name)}"
+              onclick="setQ(${JSON.stringify(item.question)})">${escHtml(item.title)}</button>
+          `).join('')}
+        </div>
+      `).join('');
+
+      document.getElementById('exampleCatalog').innerHTML = `
+        <span class="field-label" style="width:100%; margin-bottom:0">Try a known-safe question:</span>
+        ${groups}
+      `;
+    } catch (_) {
+      // Keep the static fallback catalog.
+    }
   }
 
   async function ask() {
@@ -685,6 +714,7 @@
   document.getElementById('question').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
   });
+  loadExampleCatalog();
 </script>
 </body>
 </html>

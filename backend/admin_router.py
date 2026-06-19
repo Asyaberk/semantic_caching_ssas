@@ -35,6 +35,7 @@ from backend.services.cube_explorer import (
     shape_result,
     validate_readonly_mdx,
 )
+from backend.services.golden_catalog import list_golden_questions
 from backend.services.schema_provider import get_schema_provider
 
 logger = logging.getLogger(__name__)
@@ -226,6 +227,44 @@ def quality_overview():
 
     overview["health"] = health
     return overview
+
+
+@router.get("/golden-catalog")
+def golden_catalog():
+    """Return curated demo questions with known cube/MDX mappings."""
+    items = list_golden_questions()
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/golden-catalog/validate")
+def validate_golden_catalog():
+    """Execute every golden MDX query and report SSAS validation results."""
+    results = []
+    for item in list_golden_questions():
+        try:
+            data = _execute_bridge(item["mdx"])
+            shaped = shape_result(data, item["mdx"], 5)
+            status = "success" if shaped["row_count"] > 0 else "no_data"
+            results.append({
+                **item,
+                "status": status,
+                "row_count": shaped["row_count"],
+                "source_row_count": shaped["source_row_count"],
+                "elapsed_ms": shaped["elapsed_ms"],
+                "error": None,
+            })
+        except HTTPException as exc:
+            results.append({
+                **item,
+                "status": "failed",
+                "row_count": 0,
+                "source_row_count": 0,
+                "elapsed_ms": None,
+                "error": exc.detail,
+            })
+
+    passed = sum(1 for item in results if item["status"] == "success")
+    return {"items": results, "total": len(results), "passed": passed}
 
 
 @router.get("/cache", response_model=CacheListResponse)
