@@ -27,6 +27,7 @@ from backend.models.schemas import QAPair
 from backend.agents.mdx_agent import MDXGeneratorAgent
 from backend.agents.uploader_agent import QdrantUploaderAgent
 from backend.services.schema_provider import get_schema_provider
+from backend.services.mdx_execution import execute_with_repair, extract_cube_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/demo", tags=["demo"])
@@ -80,16 +81,23 @@ class FeedbackResponse(BaseModel):
 
 class ExecuteRequest(BaseModel):
     mdx:         str
-    data_source: str = "main"
+    cube_name:   str | None = None
+    pair_id:     str | None = None
+    question:    str = ""
+    data_source: str = settings.ssas_data_source
 
 
 class ExecuteResponse(BaseModel):
+    status:     str
     columns:    list[dict]
     rows:       list[dict]
     row_count:  int
     elapsed_ms: int | None = None
     error:      str | None = None
-    simplified: bool = False
+    executed_mdx: str
+    attempt:       str
+    validated:     bool
+    cache_updated: bool = False
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -174,99 +182,100 @@ async def feedback(req: FeedbackRequest):
 
 @router.post("/execute", response_model=ExecuteResponse)
 def execute_mdx(req: ExecuteRequest):
-    """
-    Forward MDX to the SSAS Bridge and return tabular data.
-
-    Retry strategy:
-      1. Fix common year-key format (&[2025] → date range) and run
-      2. If 0 rows or error → strip WHERE + ROW dimensions, run aggregate only
-      3. If aggregate also fails → return error
-    """
+    """Execute MDX and report the exact query accepted by SSAS."""
     def _run(mdx: str) -> dict:
         url     = f"{settings.ssas_url}/api/v1/mdx/query"
         headers = {"X-API-Key": settings.ssas_api_key, "Content-Type": "application/json"}
         resp    = httpx.post(url, headers=headers, json={"mdx": mdx, "dataSource": req.data_source}, timeout=30)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(resp.text[:1000]) from exc
         return resp.json()
 
-    def _fix_year_keys(mdx: str) -> str:
-        """
-        Convert &[2025] year keys to full date-range sets that SSAS accepts.
-        Handles: [Dim].[YearHierarchy].&[2025]
-        """
-        def _to_range(m):
-            prefix = m.group(1)   # everything up to the year key
-            year   = m.group(2)
-            return (
-                "{" + prefix + ".&[" + year + "-01-01T00:00:00]"
-                ":" + prefix + ".&[" + year + "-12-31T00:00:00]}"
+    def _llm_repair(mdx: str, error_msg: str, cube: str, question: str) -> str | None:
+        """Ask the LLM to fix an MDX query given the SSAS error."""
+        try:
+            from backend.mock.cube_formatter import format_cube_for_llm
+            schema = format_cube_for_llm(cube, get_schema_provider()) if cube else ""
+
+            prompt = (
+                "You repair MDX without changing the user's business question.\n"
+                f"User question: {question or '(not supplied)'}\n"
+                f"Target cube: {cube}\n"
+                f"Error: {error_msg[:500]}\n\n"
+                f"Broken MDX:\n{mdx}\n\n"
+                f"Cube schema (use ONLY these names):\n{schema[:8000]}\n\n"
+                "Fix only the error while preserving every filter, measure, "
+                "grouping and date constraint. Never simplify to a total. "
+                "Return ONLY the complete MDX query.\n\n"
+                "Rules:\n"
+                "1. Keep the FROM cube unchanged.\n"
+                "2. Do not invent schema names or members.\n"
+                "3. Do not remove WHERE, ROWS, COLUMNS, subselects or NON EMPTY.\n"
+                "4. Do not use .Members on single-level attribute hierarchies.\n"
             )
-        # Pattern: [Anything].[Anything].&[2025]
-        return _re.sub(
-            r'(\[[^\]]+\]\.\[[^\]]+\])\.&\[(\d{4})\]',
-            _to_range,
-            mdx,
+
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.openai_api_key)
+            resp = client.chat.completions.create(
+                model=settings.openai_model,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=45,
+            )
+            raw = resp.choices[0].message.content.strip()
+            raw = _re.sub(r'```[a-z]*\n?', '', raw, flags=_re.IGNORECASE).strip('`').strip()
+            logger.info("LLM MDX repair produced:\n%s", raw[:300])
+            return raw
+        except Exception as exc:
+            logger.error("LLM MDX repair failed: %s", exc)
+            return None
+
+    mdx_cube = extract_cube_name(req.mdx)
+    cube = req.cube_name or mdx_cube
+    if not mdx_cube:
+        raise HTTPException(status_code=400, detail="MDX sorgusunda FROM [cube] bölümü bulunamadı.")
+    if req.cube_name and req.cube_name != mdx_cube:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Seçilen cube ({req.cube_name}) ile MDX cube'u ({mdx_cube}) uyuşmuyor.",
         )
 
-    def _aggregate_only(mdx: str) -> tuple[str, bool]:
-        """
-        Strip ROW axis and WHERE clause, keep only COLUMNS (measures) and FROM.
-        Returns (simplified_mdx, did_simplify).
-        """
-        cube_m   = _re.search(r'FROM\s+\[([^\]]+)\]', mdx, _re.IGNORECASE)
-        col_m    = _re.search(r'SELECT\s*\{([^}]+)\}\s*ON\s+COLUMNS', mdx, _re.IGNORECASE | _re.DOTALL)
-        if cube_m and col_m:
-            cube     = cube_m.group(1)
-            measures = "{" + col_m.group(1).strip() + "}"
-            return f"SELECT {measures} ON COLUMNS FROM [{cube}]", True
-        return "", False
+    result = execute_with_repair(
+        mdx=req.mdx,
+        cube_name=cube,
+        question=req.question,
+        run_mdx=_run,
+        repair_mdx=_llm_repair,
+    )
 
-    orig_error = ""
-
-    # ── Attempt 1: date-fixed MDX ─────────────────────────────────────────────
-    fixed_mdx = _fix_year_keys(req.mdx)
-    try:
-        data = _run(fixed_mdx)
-        rows = data.get("rows", [])
-        if rows:
-            return ExecuteResponse(
-                columns    = data.get("columns", []),
-                rows       = rows,
-                row_count  = data.get("rowCount", len(rows)),
-                elapsed_ms = data.get("elapsedMs"),
-                simplified = False,
-            )
-        # 0 rows — fall through to aggregate
-        logger.info("MDX returned 0 rows — trying aggregate fallback.")
-    except httpx.HTTPStatusError as exc:
-        orig_error = exc.response.text
-        logger.info("MDX failed (%s) — trying aggregate fallback.", exc.response.status_code)
-    except Exception as exc:
-        orig_error = str(exc)
-        logger.info("MDX error: %s — trying aggregate fallback.", exc)
-
-    # ── Attempt 2: aggregate only (no rows, no WHERE) ─────────────────────────
-    simple_mdx, did_simplify = _aggregate_only(req.mdx)
-    if did_simplify:
+    cache_updated = False
+    if req.pair_id and result.status == "success" and result.attempt in {"year_fix", "llm_repair"}:
         try:
-            logger.info("Aggregate fallback: %s", simple_mdx[:120])
-            data = _run(simple_mdx)
-            rows = data.get("rows", [])
-            return ExecuteResponse(
-                columns    = data.get("columns", []),
-                rows       = rows,
-                row_count  = data.get("rowCount", len(rows)),
-                elapsed_ms = data.get("elapsedMs"),
-                simplified = True,
-                error      = "Showing totals only — dimension filters could not be applied.",
-            )
-        except Exception as exc2:
-            logger.warning("Aggregate fallback also failed: %s", exc2)
+            from backend.db.database import update_pair_mdx
 
-    # ── All attempts failed ────────────────────────────────────────────────────
+            cache_updated = update_pair_mdx(req.pair_id, result.executed_mdx)
+            if cache_updated:
+                _qdrant.set_payload(
+                    collection_name=settings.qdrant_collection_name,
+                    payload={"mdx": result.executed_mdx, "mdx_template": None, "entity_map": None},
+                    points=PointIdsList(points=[req.pair_id]),
+                )
+        except Exception as exc:
+            cache_updated = False
+            logger.warning("Validated MDX cache update failed: %s", exc)
+
     return ExecuteResponse(
-        columns=[], rows=[], row_count=0, simplified=False,
-        error=f"SSAS query failed: {orig_error[:300]}" if orig_error else "No results returned from SSAS.",
+        status=result.status,
+        columns=result.columns,
+        rows=result.rows,
+        row_count=result.row_count,
+        elapsed_ms=result.elapsed_ms,
+        error=result.error,
+        executed_mdx=result.executed_mdx,
+        attempt=result.attempt,
+        validated=result.validated,
+        cache_updated=cache_updated,
     )
 
 

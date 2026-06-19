@@ -329,8 +329,12 @@ def count_pairs_for_cube(cube_name: str) -> int:
 # ── Update / Delete ───────────────────────────────────────────────────────────
 
 def update_pair_mdx(pair_id: str, new_mdx: str) -> bool:
-    """Update the MDX for a QA pair. Returns True if a row was updated."""
-    sql = "UPDATE qa_pairs SET mdx = %s WHERE id = %s"
+    """Update MDX and invalidate templates derived from the previous query."""
+    sql = """
+        UPDATE qa_pairs
+        SET mdx = %s, mdx_template = NULL, entity_map = NULL
+        WHERE id = %s
+    """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (new_mdx, pair_id))

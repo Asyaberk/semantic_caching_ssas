@@ -89,7 +89,7 @@ async def update_cache_entry(pair_id: str, body: UpdateMdxRequest):
     try:
         _qdrant.set_payload(
             collection_name=settings.qdrant_collection_name,
-            payload={"mdx": body.mdx},
+            payload={"mdx": body.mdx, "mdx_template": None, "entity_map": None},
             points=PointIdsList(points=[pair_id]),
         )
         logger.info("Updated MDX in Qdrant for pair %s.", pair_id)

@@ -307,6 +307,7 @@
   let currentQuestion  = '';
   let currentCube      = '';
   let currentPairId    = null;
+  let currentMdx       = '';
   let currentFeedback  = null;
 
   function setQ(q) {
@@ -455,18 +456,31 @@
       const res  = await fetch('/demo/execute', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ mdx: currentMdx }),
+        body: JSON.stringify({
+          mdx: currentMdx,
+          cube_name: currentCube,
+          pair_id: currentPairId,
+          question: currentQuestion,
+        }),
       });
       const data = await res.json();
 
-      // Hard error: no rows and error message
-      if (data.error && (!data.rows || data.rows.length === 0)) {
-        if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">Error: ${escHtml(data.error)}</div>`;
+      if (!res.ok || data.status === 'failed') {
+        const message = data.detail || data.error || 'SSAS sorgusu çalıştırılamadı.';
+        if (out) out.innerHTML = `<div style="color:#dc2626;font-size:.8rem;margin-top:8px">Hata: ${escHtml(message)}</div>`;
         return;
       }
 
-      if (!data.rows || data.rows.length === 0) {
-        if (out) out.innerHTML = '<div style="font-size:.8rem;color:var(--muted);margin-top:8px">No results returned.</div>';
+      currentMdx = data.executed_mdx || currentMdx;
+      const attemptLabels = {
+        original: 'Orijinal MDX doğrulandı',
+        year_fix: 'Yıl filtresi düzeltilerek doğrulandı',
+        llm_repair: 'MDX onarıldı ve SSAS üzerinde doğrulandı',
+      };
+      const validationNote = `<div style="font-size:.75rem;color:#047857;margin-top:8px">✓ ${escHtml(attemptLabels[data.attempt] || 'SSAS üzerinde doğrulandı')}</div>`;
+
+      if (data.status === 'no_data') {
+        if (out) out.innerHTML = `${validationNote}<div style="font-size:.8rem;color:var(--muted);margin-top:8px">Sorgu geçerli, fakat seçilen filtreler için veri bulunamadı.</div>`;
         return;
       }
 
@@ -488,15 +502,8 @@
       });
       html += '</tbody></table></div>';
       html += `<div class="ssas-meta">${data.row_count} row(s)${data.elapsed_ms ? ' &middot; SSAS: ' + data.elapsed_ms + 'ms' : ''}</div>`;
-
-      // Simplified query warning (non-blocking)
-      if (data.simplified) {
-        html += `<div style="font-size:.73rem;color:#d97706;margin-top:6px;padding:6px 10px;background:#fef3c7;border-radius:6px">
-          Showing totals only — dimension filters could not be applied to this query.
-        </div>`;
-      } else if (data.error) {
-        html += `<div style="font-size:.73rem;color:#d97706;margin-top:4px">${escHtml(data.error)}</div>`;
-      }
+      html += validationNote;
+      if (data.cache_updated) html += '<div style="font-size:.73rem;color:var(--muted);margin-top:4px">Doğrulanmış MDX cache kaydına işlendi.</div>';
 
       if (out) out.innerHTML = html;
     } catch(e) {

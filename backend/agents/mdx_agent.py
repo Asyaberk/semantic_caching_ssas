@@ -29,10 +29,27 @@ Given a cube schema and a natural language question, write a valid MDX query
 that correctly answers the question.
 
 Rules:
-- Use exact MDX member unique names from the schema (e.g. [Customer].[Country].&[Turkey]).
-- Do not invent dimension or member names that are not present in the schema.
+- Use exact dimension and hierarchy names from the schema. Never invent names.
 - The query must be syntactically valid and executable against the described cube.
 - Return ONLY a valid JSON object — no markdown, no explanation.
+
+CRITICAL — Year/Date filtering:
+- Never use bare year keys like [DateDim].[Year].&[2025] — SSAS rejects these.
+- Instead, filter by date range on the Date level:
+    WHERE {[AccruementDate].[Date].&[2025-01-01T00:00:00]:[AccruementDate].[Date].&[2025-12-31T00:00:00]}
+- Each cube has its own date dimension prefix (AccruementDate, CreditDebitDate, etc.).
+  Always use [<CubeName>Date].[Date] for date range filtering.
+
+CRITICAL — Dimension members on ROWS:
+- Attribute hierarchies (single-level) do NOT support .Members in ON ROWS.
+- Only user hierarchies (multi-level, shown in schema) support .Members.
+- For country/company/goods breakdowns, use WHERE clause filtering instead:
+    WHERE [AccruementCompany].[CountryName].&[Türkiye]
+- To list members of a user hierarchy: [Dim].[HierarchyName].Members ON ROWS
+
+CRITICAL — Member key values:
+- Member keys in this SSAS instance use local language (e.g. Türkiye not Turkey).
+- Always use the member key exactly as it appears in the cube schema.
 """
 
 
