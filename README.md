@@ -174,6 +174,12 @@ Lists all cached Q&A pairs. Filter by:
 - **Cube** name
 - **Feedback** status (Flagged / Verified)
 
+### Cube Explorer tab
+Reads the live SSAS catalog and lets admins:
+- inspect cubes, dimensions, measures, hierarchies, levels, and cardinalities
+- preview bounded hierarchy-member data with a selected measure
+- run read-only MDX exactly as written, with a 500-row display limit
+
 ### Query History tab
 Logs every incoming query with outcome, similarity score, matched cache entry, and mismatch type. Failed queries have a **Save to cache** button for manual MDX entry.
 
@@ -191,6 +197,11 @@ Logs every incoming query with outcome, similarity score, matched cache entry, a
 | `PUT` | `/admin/cache/{id}` | Edit a cached pair's MDX |
 | `DELETE` | `/admin/cache/{id}` | Delete a cached pair |
 | `GET` | `/admin/query-log` | Query history with outcomes |
+| `GET` | `/admin/cubes` | List live SSAS cubes |
+| `GET` | `/admin/cubes/{cube}/schema` | List dimensions and measures |
+| `GET` | `/admin/cubes/{cube}/hierarchies` | List hierarchy and level metadata |
+| `GET` | `/admin/cubes/{cube}/members` | Preview bounded member data |
+| `POST` | `/admin/cubes/{cube}/execute` | Run exact read-only MDX with bounded output |
 | `POST` | `/demo/query` | Semantic cache lookup |
 | `POST` | `/demo/feedback` | Submit feedback for a result |
 | `POST` | `/demo/execute` | Run MDX against SSAS and return data |

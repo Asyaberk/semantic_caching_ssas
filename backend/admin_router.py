@@ -12,6 +12,7 @@ DELETE /admin/cache/{pair_id}    — delete a pair from PostgreSQL + Qdrant
 import logging
 import uuid
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
@@ -23,6 +24,12 @@ from backend.db.database import (
     get_query_log, save_pairs,
 )
 from backend.models.schemas import QAPair
+from backend.services.cube_explorer import (
+    build_member_preview_mdx,
+    shape_result,
+    validate_readonly_mdx,
+)
+from backend.services.schema_provider import get_schema_provider
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -33,6 +40,7 @@ _qdrant = QdrantClient(
     api_key=settings.qdrant_api_key,
     https=True,
 )
+_schema_provider = get_schema_provider()
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -48,7 +56,121 @@ class UpdateMdxRequest(BaseModel):
     mdx: str
 
 
+class ExplorerExecuteRequest(BaseModel):
+    mdx: str
+    limit: int = 200
+
+
+def _cube_or_404(cube_name: str) -> dict:
+    try:
+        cube = next(
+            (item for item in _schema_provider.get_cubes() if item.get("name") == cube_name),
+            None,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"SSAS metadata alınamadı: {exc}") from exc
+    if not cube:
+        raise HTTPException(status_code=404, detail="Cube bulunamadı.")
+    return cube
+
+
+def _execute_bridge(mdx: str) -> dict:
+    try:
+        response = httpx.post(
+            f"{settings.ssas_url}/api/v1/mdx/query",
+            headers={"X-API-Key": settings.ssas_api_key, "Content-Type": "application/json"},
+            json={"mdx": mdx, "dataSource": settings.ssas_data_source},
+            timeout=45,
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=422, detail=exc.response.text[:1000]) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"SSAS bağlantı hatası: {exc}") from exc
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.get("/cubes")
+def list_cubes():
+    """List the cubes currently exposed by the configured SSAS data source."""
+    try:
+        cubes = _schema_provider.get_cubes()
+        return {"items": cubes, "total": len(cubes), "data_source": settings.ssas_data_source}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"SSAS cube listesi alınamadı: {exc}") from exc
+
+
+@router.get("/cubes/{cube_name}/schema")
+def cube_schema(cube_name: str):
+    """Return measures and dimensions without expensive member expansion."""
+    cube = _cube_or_404(cube_name)
+    try:
+        dimensions = _schema_provider.get_dimensions(cube_name)
+        measures = _schema_provider.get_measures(cube_name)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Cube şeması alınamadı: {exc}") from exc
+    return {"cube": cube, "dimensions": dimensions, "measures": measures}
+
+
+@router.get("/cubes/{cube_name}/hierarchies")
+def cube_hierarchies(cube_name: str, dimension_name: str = Query(...)):
+    """Load hierarchy and level metadata for a selected dimension."""
+    _cube_or_404(cube_name)
+    dimensions = _schema_provider.get_dimensions(cube_name)
+    dimension = next(
+        (
+            item for item in dimensions
+            if dimension_name in {item.get("name"), item.get("unique_name")}
+        ),
+        None,
+    )
+    if not dimension:
+        raise HTTPException(status_code=404, detail="Dimension bulunamadı.")
+    try:
+        items = _schema_provider.get_dimension_hierarchies(cube_name, dimension["name"])
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Hierarchy listesi alınamadı: {exc}") from exc
+    return {"dimension": dimension, "items": items, "total": len(items)}
+
+
+@router.get("/cubes/{cube_name}/members")
+def preview_members(
+    cube_name: str,
+    dimension_name: str = Query(...),
+    hierarchy_unique_name: str = Query(...),
+    measure_unique_name: str = Query(...),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """List bounded hierarchy members with a selected measure."""
+    _cube_or_404(cube_name)
+    hierarchies = _schema_provider.get_dimension_hierarchies(cube_name, dimension_name)
+    if hierarchy_unique_name not in {item.get("uniqueName") or item.get("unique_name") for item in hierarchies}:
+        raise HTTPException(status_code=400, detail="Hierarchy bu dimension içinde bulunamadı.")
+    measures = _schema_provider.get_measures(cube_name)
+    if measure_unique_name not in {item.get("unique_name") for item in measures}:
+        raise HTTPException(status_code=400, detail="Measure bu cube içinde bulunamadı.")
+
+    mdx = build_member_preview_mdx(
+        cube_name=cube_name,
+        hierarchy_unique_name=hierarchy_unique_name,
+        measure_unique_name=measure_unique_name,
+        limit=limit,
+    )
+    return shape_result(_execute_bridge(mdx), mdx, limit)
+
+
+@router.post("/cubes/{cube_name}/execute")
+def explorer_execute(cube_name: str, body: ExplorerExecuteRequest):
+    """Execute a read-only MDX query exactly as written, with bounded output."""
+    _cube_or_404(cube_name)
+    limit = min(max(body.limit, 1), 500)
+    try:
+        mdx = validate_readonly_mdx(body.mdx, cube_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return shape_result(_execute_bridge(mdx), mdx, limit)
 
 @router.get("/cache", response_model=CacheListResponse)
 async def list_cache(

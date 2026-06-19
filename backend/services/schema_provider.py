@@ -58,6 +58,23 @@ class SchemaProvider(ABC):
         """Return hierarchy definitions for the given cube."""
         ...
 
+    def get_dimension_hierarchies(self, cube_name: str, dimension_name: str) -> list[dict]:
+        """Return hierarchies for one dimension.
+
+        Providers may override this to avoid fetching every cube dimension.
+        """
+        dimensions = self.get_dimensions(cube_name)
+        dimension = next(
+            (
+                item for item in dimensions
+                if dimension_name in {item.get("name"), item.get("unique_name")}
+            ),
+            None,
+        )
+        if not dimension:
+            return []
+        return self.get_hierarchies(cube_name).get(dimension["unique_name"], [])
+
 
 # ── Mock implementation ──────────────────────────────────────────────────────
 
@@ -135,6 +152,8 @@ class SSASSchemaProvider(SchemaProvider):
                 "name":        c["name"],
                 "caption":     c.get("caption", c["name"]),
                 "description": c.get("description", ""),
+                "last_schema_update": c.get("lastSchemaUpdate"),
+                "aliases": c.get("aliases", []),
             }
             for c in data.get("cubes", [])
         ]
@@ -149,6 +168,8 @@ class SSASSchemaProvider(SchemaProvider):
                 "description":      d.get("description", ""),
                 "type":             d.get("type", ""),
                 "default_hierarchy":d.get("defaultHierarchy", ""),
+                "hierarchy_count":  d.get("hierarchyCount", 0),
+                "aliases":          d.get("aliases", []),
             }
             for d in data.get("dimensions", [])
         ]
@@ -165,6 +186,8 @@ class SSASSchemaProvider(SchemaProvider):
                 "display_folder": m.get("displayFolder", ""),
                 "measure_group":  m.get("measureGroup", ""),
                 "format_string":  m.get("formatString", ""),
+                "is_calculated":  m.get("isCalculated", False),
+                "aliases":        m.get("aliases", []),
             }
             for m in data.get("measures", [])
         ]
@@ -223,6 +246,12 @@ class SSASSchemaProvider(SchemaProvider):
                 hierarchies[dim_unique] = []
 
         return hierarchies
+
+    def get_dimension_hierarchies(self, cube_name: str, dimension_name: str) -> list[dict]:
+        data = self._get(
+            f"/api/v1/metadata/cubes/{cube_name}/dimensions/{dimension_name}/hierarchies"
+        )
+        return data.get("hierarchies", [])
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────
