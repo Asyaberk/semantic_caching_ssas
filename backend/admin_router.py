@@ -23,7 +23,10 @@ from backend.db.database import (
     delete_pairs,
     get_all_pairs,
     get_cache_stats,
+    get_pairs_for_validation,
     get_quality_overview,
+    log_execution,
+    save_pair_validation,
     update_pair_mdx,
     delete_pair,
     get_query_log,
@@ -35,6 +38,7 @@ from backend.services.cube_explorer import (
     shape_result,
     validate_readonly_mdx,
 )
+from backend.services.cache_validation import classify_bridge_result
 from backend.services.golden_catalog import list_golden_questions
 from backend.services.schema_provider import get_schema_provider
 
@@ -69,6 +73,7 @@ class CacheClearRequest(BaseModel):
     search: str | None = None
     mdx_search: str | None = None
     has_template: bool | None = None
+    validation_status: str | None = None
     confirm_all: bool = False
 
 
@@ -81,6 +86,13 @@ class QueryLogClearRequest(BaseModel):
 class ExplorerExecuteRequest(BaseModel):
     mdx: str
     limit: int = 200
+
+
+class CacheValidationRequest(BaseModel):
+    cube_name: str | None = None
+    feedback: str | None = None
+    validation_status: str | None = None
+    limit: int = 25
 
 
 def _cube_or_404(cube_name: str) -> dict:
@@ -274,6 +286,10 @@ async def list_cache(
     search:       str | None  = Query(None, description="keyword in question text"),
     mdx_search:   str | None  = Query(None, description="keyword in MDX content (e.g. 2024, Turkey)"),
     has_template: bool | None = Query(None, description="true = only pairs with template"),
+    validation_status: str | None = Query(
+        None,
+        description="success | no_data | failed | unvalidated",
+    ),
     page:         int         = Query(1,  ge=1),
     page_size:    int         = Query(50, ge=1, le=200),
 ):
@@ -285,6 +301,7 @@ async def list_cache(
         cube_name=cube_name, feedback=feedback,
         search=search, mdx_search=mdx_search,
         has_template=has_template,
+        validation_status=validation_status,
         page=page, page_size=page_size,
     )
     return CacheListResponse(total=total, page=page, page_size=page_size, items=rows)
@@ -298,6 +315,77 @@ async def cache_stats():
     except Exception as exc:
         logger.error("cache_stats failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/quality/validate-cache")
+def validate_cache(body: CacheValidationRequest):
+    """Execute a bounded cache selection on SSAS and persist quality outcomes."""
+    limit = min(max(body.limit, 1), 100)
+    if body.feedback not in {None, "positive", "negative"}:
+        raise HTTPException(status_code=400, detail="Unsupported feedback filter.")
+    if body.validation_status not in {None, "success", "no_data", "failed", "unvalidated"}:
+        raise HTTPException(status_code=400, detail="Unsupported validation status filter.")
+
+    pairs = get_pairs_for_validation(
+        cube_name=body.cube_name,
+        feedback=body.feedback,
+        validation_status=body.validation_status,
+        limit=limit,
+    )
+    results = []
+    for pair in pairs:
+        error = None
+        try:
+            data = _execute_bridge(pair["mdx"])
+            status, row_count = classify_bridge_result(data)
+        except HTTPException as exc:
+            status = "failed"
+            row_count = 0
+            error = str(exc.detail)[:1000]
+
+        save_pair_validation(
+            pair["id"],
+            status=status,
+            row_count=row_count,
+            error=error,
+        )
+        log_execution(
+            question=pair["question"],
+            pair_id=pair["id"],
+            cube_name=pair["cube_name"],
+            status=status,
+            attempt="quality_gate",
+            row_count=row_count,
+            error=error,
+        )
+        try:
+            _qdrant.set_payload(
+                collection_name=settings.qdrant_collection_name,
+                payload={
+                    "validation_status": status,
+                    "validation_row_count": row_count,
+                },
+                points=PointIdsList(points=[pair["id"]]),
+            )
+        except Exception as exc:
+            logger.warning("Qdrant validation payload update failed for %s: %s", pair["id"], exc)
+
+        results.append({
+            "id": pair["id"],
+            "cube_name": pair["cube_name"],
+            "question": pair["question"],
+            "status": status,
+            "row_count": row_count,
+            "error": error,
+        })
+
+    return {
+        "items": results,
+        "total": len(results),
+        "passed": sum(item["status"] == "success" for item in results),
+        "no_data": sum(item["status"] == "no_data" for item in results),
+        "failed": sum(item["status"] == "failed" for item in results),
+    }
 
 
 @router.post("/cache/clear")
@@ -314,6 +402,7 @@ async def clear_cache(req: CacheClearRequest):
         req.search,
         req.mdx_search,
         req.has_template is not None,
+        req.validation_status,
     ])
     if not has_filter and not req.confirm_all:
         raise HTTPException(
@@ -327,6 +416,7 @@ async def clear_cache(req: CacheClearRequest):
         search=req.search,
         mdx_search=req.mdx_search,
         has_template=req.has_template,
+        validation_status=req.validation_status,
     )
 
     deleted_qdrant = 0

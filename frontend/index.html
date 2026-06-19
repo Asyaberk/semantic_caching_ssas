@@ -316,6 +316,51 @@
       </div>
 
       <div class="card">
+        <div class="card-title">Cache Quality Gates</div>
+        <p class="helper-copy">
+          Run cached MDX against SSAS before trusting it. Empty results remain visible as no-data issues;
+          this workflow never removes filters or rewrites business intent automatically.
+        </p>
+        <div class="filter-row">
+          <div>
+            <div class="filter-label">Cube scope</div>
+            <select id="qualityGateCube">
+              <option value="">All cubes</option>
+              <option>cubeAccruement</option>
+              <option>cubeCreditDebit</option>
+              <option>cubeDwellTimeRoro</option>
+              <option>cubeGangPoint</option>
+              <option>cubeGeneralJobOrders</option>
+              <option>cubeOtherJobOrders</option>
+              <option>cubeVesselJobOrder</option>
+              <option>cubeVesselOrder</option>
+              <option>cubeWaiting</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="validateNextCache()">Validate next 25</button>
+          <button class="btn btn-ghost" onclick="validateFlaggedCache()">Validate flagged</button>
+          <button class="btn btn-ghost" onclick="revalidateNoDataCache()">Revalidate no-data</button>
+          <span id="cacheValidationStatus" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+        </div>
+        <div class="table-wrap" style="margin-top:14px">
+          <table>
+            <thead>
+              <tr>
+                <th>Question</th>
+                <th>Cube</th>
+                <th>Status</th>
+                <th>Rows</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="cacheValidationBody">
+              <tr><td colspan="5" class="empty-state">Run a quality gate to inspect cached MDX.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">Cube Coverage &amp; Quality</div>
         <div class="table-wrap">
           <table>
@@ -468,6 +513,9 @@
           <div class="mini-stat"><span>Flagged</span><strong id="cacheStatFlagged">—</strong></div>
           <div class="mini-stat"><span>Verified</span><strong id="cacheStatVerified">—</strong></div>
           <div class="mini-stat"><span>Templated</span><strong id="cacheStatTemplated">—</strong></div>
+          <div class="mini-stat"><span>SSAS passed</span><strong id="cacheStatValidated">—</strong></div>
+          <div class="mini-stat"><span>No data</span><strong id="cacheStatNoData">—</strong></div>
+          <div class="mini-stat"><span>Failed</span><strong id="cacheStatFailed">—</strong></div>
         </div>
         <p class="helper-copy">
           Use filtered cleanup when fixing bad MDX at scale. The current filter controls which pairs are deleted.
@@ -517,6 +565,16 @@
               <option value="positive">Verified</option>
             </select>
           </div>
+          <div>
+            <div class="filter-label">SSAS validation</div>
+            <select id="filterValidation" onchange="loadCache(1)">
+              <option value="">All</option>
+              <option value="success">Passed</option>
+              <option value="no_data">No data</option>
+              <option value="failed">Failed</option>
+              <option value="unvalidated">Not validated</option>
+            </select>
+          </div>
           <button class="btn btn-ghost" onclick="loadCache(1)" style="height:38px;align-self:flex-end">Refresh</button>
           <span id="cacheCount" style="align-self:flex-end;font-size:.82rem;color:var(--muted)"></span>
         </div>
@@ -528,6 +586,7 @@
                 <th>Question</th>
                 <th>Cube</th>
                 <th>Feedback</th>
+                <th>Validation</th>
                 <th>MDX Preview</th>
                 <th>Date</th>
                 <th></th>
@@ -1033,6 +1092,81 @@
     }
   }
 
+  function renderCacheValidation(items) {
+    const body = document.getElementById('cacheValidationBody');
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty-state">No cache pairs matched this quality gate.</td></tr>';
+      return;
+    }
+    body.innerHTML = items.map(item => {
+      const color = item.status === 'success'
+        ? 'var(--green)'
+        : item.status === 'no_data' ? 'var(--amber)' : 'var(--red)';
+      const details = item.error || (item.status === 'no_data'
+        ? 'The query is valid but returned no rows. Review its filters in Cache.'
+        : 'Validated on SSAS.');
+      return `<tr>
+        <td style="max-width:330px">${escHtml(item.question)}</td>
+        <td style="font-size:.78rem;color:var(--muted)">${escHtml(item.cube_name)}</td>
+        <td><span class="status-badge" style="background:var(--bg);color:${color}">${escHtml(item.status)}</span></td>
+        <td>${item.row_count ?? 0}</td>
+        <td style="font-size:.78rem;color:var(--muted);max-width:360px">${escHtml(details)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function runCacheValidation(payload, label) {
+    const status = document.getElementById('cacheValidationStatus');
+    status.style.color = 'var(--muted)';
+    status.textContent = `${label} is running on SSAS…`;
+    document.getElementById('cacheValidationBody').innerHTML =
+      '<tr><td colspan="5" class="empty-state">Validating cached MDX on SSAS…</td></tr>';
+    try {
+      const res = await fetch('/admin/quality/validate-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Cache validation failed.');
+      renderCacheValidation(data.items || []);
+      status.textContent =
+        `${label}: ${data.passed || 0} passed, ${data.no_data || 0} no-data, ${data.failed || 0} failed.`;
+      if (data.no_data || data.failed) status.style.color = 'var(--amber)';
+      await Promise.all([loadQualityOverview(), loadCacheStats()]);
+    } catch (e) {
+      status.textContent = e.message;
+      status.style.color = 'var(--red)';
+      document.getElementById('cacheValidationBody').innerHTML =
+        `<tr><td colspan="5" class="empty-state" style="color:var(--red)">Error: ${escHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  function qualityGateCube() {
+    return document.getElementById('qualityGateCube').value || null;
+  }
+
+  function validateNextCache() {
+    runCacheValidation(
+      { cube_name: qualityGateCube(), validation_status: 'unvalidated', limit: 25 },
+      'Unvalidated cache gate',
+    );
+  }
+
+  function validateFlaggedCache() {
+    runCacheValidation(
+      { cube_name: qualityGateCube(), feedback: 'negative', limit: 50 },
+      'Flagged cache gate',
+    );
+  }
+
+  function revalidateNoDataCache() {
+    runCacheValidation(
+      { cube_name: qualityGateCube(), validation_status: 'no_data', limit: 50 },
+      'No-data revalidation',
+    );
+  }
+
   pollStatus();
   loadQualityOverview();
   loadGoldenCatalog();
@@ -1055,11 +1189,13 @@
     cachePage = page;
     const cube      = document.getElementById('filterCube').value;
     const feedback  = document.getElementById('filterFeedback').value;
+    const validation = document.getElementById('filterValidation').value;
     const search    = document.getElementById('filterSearch').value.trim();
     const mdxKw     = document.getElementById('filterMdx').value.trim();
     const params    = new URLSearchParams({ page, page_size: 25 });
     if (cube)      params.set('cube_name', cube);
     if (feedback)  params.set('feedback', feedback);
+    if (validation) params.set('validation_status', validation);
     if (search)    params.set('search', search);
     if (mdxKw)     params.set('mdx_search', mdxKw);
 
@@ -1090,11 +1226,22 @@
           : '<span style="color:var(--muted);font-size:.8rem">—</span>';
         const mdxPrev = (row.mdx || '').slice(0, 70) + ((row.mdx || '').length > 70 ? '…' : '');
         const date    = row.created_at ? new Date(row.created_at).toLocaleDateString() : '—';
+        const validationColor = row.validation_status === 'success'
+          ? 'var(--green)'
+          : row.validation_status === 'no_data' ? 'var(--amber)'
+          : row.validation_status === 'failed' ? 'var(--red)' : 'var(--muted)';
+        const validationLabel = row.validation_status || 'not validated';
+        const validationTitle = row.validation_error
+          || (row.last_validated_at ? `Last checked ${new Date(row.last_validated_at).toLocaleString()}` : '');
 
         return `<tr class="${flagged ? 'row-flagged' : ''}">
           <td style="max-width:280px;word-break:break-word">${escHtml(row.question)}</td>
           <td style="font-size:.78rem;color:var(--muted)">${escHtml(row.cube_name)}</td>
           <td>${fbHtml}</td>
+          <td title="${escHtml(validationTitle)}">
+            <span class="status-badge" style="background:var(--bg);color:${validationColor}">${escHtml(validationLabel)}</span>
+            ${row.validation_status ? `<div style="font-size:.68rem;color:var(--muted);margin-top:3px">${row.validation_row_count ?? 0} row(s)</div>` : ''}
+          </td>
           <td style="font-family:monospace;font-size:.75rem;color:var(--muted);max-width:200px"
               title="${escHtml(row.mdx || '')}">${escHtml(mdxPrev)}</td>
           <td style="font-size:.78rem;color:var(--muted);white-space:nowrap">${date}</td>
@@ -1118,6 +1265,9 @@
       document.getElementById('cacheStatFlagged').textContent = data.flagged ?? '0';
       document.getElementById('cacheStatVerified').textContent = data.verified ?? '0';
       document.getElementById('cacheStatTemplated').textContent = data.templated ?? '0';
+      document.getElementById('cacheStatValidated').textContent = data.validated ?? '0';
+      document.getElementById('cacheStatNoData').textContent = data.no_data ?? '0';
+      document.getElementById('cacheStatFailed').textContent = data.failed ?? '0';
     } catch (e) {
       document.getElementById('cacheActionStatus').textContent = `Stats error: ${e.message}`;
       document.getElementById('cacheActionStatus').style.color = 'var(--red)';
@@ -1128,6 +1278,7 @@
     return {
       cube_name: document.getElementById('filterCube').value || null,
       feedback: document.getElementById('filterFeedback').value || null,
+      validation_status: document.getElementById('filterValidation').value || null,
       search: document.getElementById('filterSearch').value.trim() || null,
       mdx_search: document.getElementById('filterMdx').value.trim() || null,
     };

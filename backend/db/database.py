@@ -79,6 +79,10 @@ def init_db() -> None:
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS entities      JSONB;
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS mdx_template  TEXT;
     ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS entity_map    JSONB;
+    ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS validation_status VARCHAR(30);
+    ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS validation_error TEXT;
+    ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS validation_row_count INTEGER;
+    ALTER TABLE qa_pairs ADD COLUMN IF NOT EXISTS last_validated_at TIMESTAMPTZ;
 
     -- Query log: every incoming query is recorded here
     CREATE TABLE IF NOT EXISTS query_log (
@@ -270,6 +274,7 @@ def get_all_pairs(
     search:       str | None = None,   # keyword in question text
     mdx_search:   str | None = None,   # keyword in MDX content only
     has_template: bool | None = None,
+    validation_status: str | None = None,
     page:         int = 1,
     page_size:    int = 50,
 ) -> tuple[list[dict], int]:
@@ -304,6 +309,11 @@ def get_all_pairs(
         conditions.append("mdx_template IS NOT NULL")
     elif has_template is False:
         conditions.append("mdx_template IS NULL")
+    if validation_status == "unvalidated":
+        conditions.append("validation_status IS NULL")
+    elif validation_status:
+        conditions.append("validation_status = %s")
+        params.append(validation_status)
 
     where  = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     offset = (page - 1) * page_size
@@ -317,7 +327,9 @@ def get_all_pairs(
                 f"""
                 SELECT id, cube_name, question, mdx, complexity,
                        feedback, user_question, created_at,
-                       (mdx_template IS NOT NULL) AS has_template
+                       (mdx_template IS NOT NULL) AS has_template,
+                       validation_status, validation_error,
+                       validation_row_count, last_validated_at
                 FROM   qa_pairs
                 {where}
                 ORDER  BY created_at DESC
@@ -331,6 +343,8 @@ def get_all_pairs(
     for row in rows:
         if row.get("created_at"):
             row["created_at"] = row["created_at"].isoformat()
+        if row.get("last_validated_at"):
+            row["last_validated_at"] = row["last_validated_at"].isoformat()
 
     return rows, total
 
@@ -353,6 +367,18 @@ def get_cache_stats() -> dict:
 
             cur.execute(
                 """
+                SELECT
+                    COUNT(*) FILTER (WHERE validation_status = 'success') AS validated,
+                    COUNT(*) FILTER (WHERE validation_status = 'no_data') AS no_data,
+                    COUNT(*) FILTER (WHERE validation_status = 'failed') AS failed,
+                    COUNT(*) FILTER (WHERE validation_status IS NULL) AS unvalidated
+                FROM qa_pairs
+                """
+            )
+            validation = dict(cur.fetchone())
+
+            cur.execute(
+                """
                 SELECT cube_name, COUNT(*) AS count
                 FROM qa_pairs
                 GROUP BY cube_name
@@ -366,6 +392,7 @@ def get_cache_stats() -> dict:
         "flagged": flagged,
         "verified": verified,
         "templated": templated,
+        **validation,
         "by_cube": by_cube,
     }
 
@@ -405,7 +432,11 @@ def get_quality_overview() -> dict:
                        COUNT(*) AS total,
                        COUNT(*) FILTER (WHERE feedback = 'negative') AS flagged,
                        COUNT(*) FILTER (WHERE feedback = 'positive') AS verified,
-                       COUNT(*) FILTER (WHERE mdx_template IS NOT NULL) AS templated
+                       COUNT(*) FILTER (WHERE mdx_template IS NOT NULL) AS templated,
+                       COUNT(*) FILTER (WHERE validation_status = 'success') AS validated,
+                       COUNT(*) FILTER (WHERE validation_status = 'no_data') AS cache_no_data,
+                       COUNT(*) FILTER (WHERE validation_status = 'failed') AS cache_failed,
+                       COUNT(*) FILTER (WHERE validation_status IS NULL) AS unvalidated
                 FROM qa_pairs
                 GROUP BY cube_name
                 ORDER BY cube_name
@@ -489,6 +520,10 @@ def get_quality_overview() -> dict:
             "flagged": flagged,
             "verified": verified,
             "templated": cached.get("templated", 0) or 0,
+            "validated": cached.get("validated", 0) or 0,
+            "cache_no_data": cached.get("cache_no_data", 0) or 0,
+            "cache_failed": cached.get("cache_failed", 0) or 0,
+            "unvalidated": cached.get("unvalidated", 0) or 0,
             "queries": queries,
             "hits": queried.get("hits", 0) or 0,
             "templates": queried.get("templates", 0) or 0,
@@ -556,12 +591,82 @@ def update_pair_mdx(pair_id: str, new_mdx: str) -> bool:
     """Update MDX and invalidate templates derived from the previous query."""
     sql = """
         UPDATE qa_pairs
-        SET mdx = %s, mdx_template = NULL, entity_map = NULL
+        SET mdx = %s,
+            mdx_template = NULL,
+            entity_map = NULL,
+            validation_status = NULL,
+            validation_error = NULL,
+            validation_row_count = NULL,
+            last_validated_at = NULL
         WHERE id = %s
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (new_mdx, pair_id))
+            updated = cur.rowcount
+        conn.commit()
+    return updated > 0
+
+
+def get_pairs_for_validation(
+    *,
+    cube_name: str | None = None,
+    feedback: str | None = None,
+    validation_status: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Return cached MDX pairs selected for a bounded validation run."""
+    conditions = ["mdx IS NOT NULL", "mdx <> ''"]
+    params: list = []
+    if cube_name:
+        conditions.append("cube_name = %s")
+        params.append(cube_name)
+    if feedback:
+        conditions.append("feedback = %s")
+        params.append(feedback)
+    if validation_status == "unvalidated":
+        conditions.append("validation_status IS NULL")
+    elif validation_status:
+        conditions.append("validation_status = %s")
+        params.append(validation_status)
+
+    where = "WHERE " + " AND ".join(conditions)
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT id, cube_name, question, mdx, validation_status
+                FROM qa_pairs
+                {where}
+                ORDER BY last_validated_at ASC NULLS FIRST, created_at DESC
+                LIMIT %s
+                """,
+                params + [limit],
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+
+def save_pair_validation(
+    pair_id: str,
+    *,
+    status: str,
+    row_count: int,
+    error: str | None = None,
+) -> bool:
+    """Persist the latest SSAS validation outcome for one cached pair."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE qa_pairs
+                SET validation_status = %s,
+                    validation_error = %s,
+                    validation_row_count = %s,
+                    last_validated_at = NOW()
+                WHERE id = %s
+                """,
+                (status, error, row_count, pair_id),
+            )
             updated = cur.rowcount
         conn.commit()
     return updated > 0
@@ -585,6 +690,7 @@ def delete_pairs(
     search: str | None = None,
     mdx_search: str | None = None,
     has_template: bool | None = None,
+    validation_status: str | None = None,
 ) -> tuple[list[str], int]:
     """Delete QA pairs matching the same filters as the cache list."""
     conditions: list[str] = []
@@ -606,6 +712,11 @@ def delete_pairs(
         conditions.append("mdx_template IS NOT NULL")
     elif has_template is False:
         conditions.append("mdx_template IS NULL")
+    if validation_status == "unvalidated":
+        conditions.append("validation_status IS NULL")
+    elif validation_status:
+        conditions.append("validation_status = %s")
+        params.append(validation_status)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
